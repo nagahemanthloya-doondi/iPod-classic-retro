@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Video, NowPlayingMedia } from '../types';
 
 interface VideoPlayerProps {
@@ -6,20 +6,58 @@ interface VideoPlayerProps {
   videoInputRef: React.RefObject<HTMLInputElement>;
   nowPlayingMedia: NowPlayingMedia | null;
   videoRef: React.RefObject<HTMLVideoElement>;
-  progress: number;
-  duration: number;
+  setYtPlayer: (player: any) => void;
+  setIsPlaying: (isPlaying: boolean) => void;
+  onNext: () => void;
 }
 
-const formatTime = (seconds: number) => {
-  if (isNaN(seconds) || seconds === Infinity) return '0:00';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
-  return `${mins}:${secs}`;
-};
+const getYouTubeId = (url: string): string | null => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+}
 
-const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPlayingMedia, videoRef, progress, duration }) => {
+const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPlayingMedia, videoRef, setYtPlayer, setIsPlaying, onNext }) => {
     const activeVideoIndex = nowPlayingMedia?.type === 'video' ? nowPlayingMedia.index : -1;
     const activeVideo = activeVideoIndex !== -1 ? videos[activeVideoIndex] : null;
+    
+    const videoId = activeVideo?.isYoutube ? getYouTubeId(activeVideo.url) : null;
+
+    useEffect(() => {
+        if (activeVideo?.isYoutube && videoId && window.YT) {
+            const player = new window.YT.Player('youtube-player', {
+                videoId: videoId,
+                playerVars: {
+                    autoplay: 1,
+                    controls: 0,
+                    rel: 0,
+                    modestbranding: 1,
+                    fs: 0, // Disable fullscreen button
+                },
+                events: {
+                    'onReady': (event) => {
+                        setYtPlayer(event.target);
+                        event.target.playVideo();
+                    },
+                    'onStateChange': (event) => {
+                        if (event.data === window.YT.PlayerState.PLAYING) {
+                            setIsPlaying(true);
+                        } else if (event.data === window.YT.PlayerState.PAUSED) {
+                            setIsPlaying(false);
+                        } else if (event.data === window.YT.PlayerState.ENDED) {
+                            setIsPlaying(false);
+                            onNext();
+                        }
+                    }
+                }
+            });
+
+            return () => {
+                // Player destruction is handled in App.tsx before navigating to a new video
+            };
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [videoId]); // Only re-create player when videoId changes
 
     if (!activeVideo) {
         return (
@@ -33,40 +71,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
         );
     }
     
-    const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
-    
     return (
-        <div className="w-full h-full bg-black flex flex-col items-center justify-between">
-            <div className="w-full flex-grow flex items-center justify-center">
-                {activeVideo.isYoutube ? (
-                    <div className="w-full aspect-video">
-                        <iframe
-                            src={activeVideo.url}
-                            title={activeVideo.name}
-                            frameBorder="0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                            className="w-full h-full"
-                        ></iframe>
-                    </div>
-                ) : (
-                    <video ref={videoRef} src={activeVideo.url} className="max-w-full max-h-full object-contain">
-                        Your browser does not support the video tag.
-                    </video>
-                )}
-            </div>
-            
-            {!activeVideo.isYoutube && (
-                 <div className="w-full p-2 text-white flex-shrink-0">
-                    <p className="text-center text-xs truncate">{activeVideo.name}</p>
-                    <div className="w-full bg-gray-600 rounded-full h-1 my-1">
-                        <div className="bg-white h-1 rounded-full" style={{ width: `${progressPercent}%` }}></div>
-                    </div>
-                    <div className="flex justify-between text-xs font-semibold text-gray-400">
-                        <span>{formatTime(progress)}</span>
-                        <span>-{formatTime(duration - progress)}</span>
-                    </div>
-                </div>
+        <div className="w-full h-full bg-black flex items-center justify-center">
+            {activeVideo.isYoutube ? (
+                <div id="youtube-player" className="w-full h-full"></div>
+            ) : (
+                <video ref={videoRef} src={activeVideo.url} className="max-w-full max-h-full object-contain">
+                    Your browser does not support the video tag.
+                </video>
             )}
         </div>
     );

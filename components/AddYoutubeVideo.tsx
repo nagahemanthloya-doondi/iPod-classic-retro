@@ -1,8 +1,9 @@
+
 import React, { useState } from 'react';
 import { Video } from '../types';
 
 interface AddYoutubeVideoProps {
-  setVideos: React.Dispatch<React.SetStateAction<Video[]>>;
+  onAddVideo: (video: Video) => void;
   goBack: () => void;
 }
 
@@ -12,27 +13,50 @@ const getYouTubeId = (url: string): string | null => {
     return (match && match[2].length === 11) ? match[2] : null;
 }
 
-const AddYoutubeVideo: React.FC<AddYoutubeVideoProps> = ({ setVideos, goBack }) => {
+const AddYoutubeVideo: React.FC<AddYoutubeVideoProps> = ({ onAddVideo, goBack }) => {
     const [youtubeUrl, setYoutubeUrl] = useState('');
     const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-    const handleAddYoutubeVideo = () => {
+    const handleAddYoutubeVideo = async () => {
         if (!youtubeUrl) {
             setError('Please enter a YouTube URL');
             return;
         }
         const videoId = getYouTubeId(youtubeUrl);
         if (videoId) {
-            const newVideo: Video = {
-                id: `yt-${videoId}`,
-                name: `YouTube: ${videoId}`,
-                url: `https://www.youtube.com/embed/${videoId}`,
-                isYoutube: true,
-            };
-            setVideos(prev => [...prev, newVideo]);
-            setYoutubeUrl('');
+            setIsLoading(true);
             setError('');
-            goBack();
+            try {
+                const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+
+                if (!response.ok) {
+                    throw new Error('Could not fetch video details from YouTube.');
+                }
+
+                const data = await response.json();
+                const videoTitle = data.title;
+
+                if (!videoTitle) {
+                    throw new Error('Could not extract video title.');
+                }
+
+                const newVideo: Video = {
+                    id: `yt-${videoId}`,
+                    name: videoTitle,
+                    url: `https://www.youtube.com/embed/${videoId}`,
+                    isYoutube: true,
+                };
+                onAddVideo(newVideo);
+                setYoutubeUrl('');
+                setError('');
+                goBack();
+            } catch (err: any) {
+                console.error(err);
+                setError(err.message || 'Could not fetch video title. Please check the URL.');
+            } finally {
+                setIsLoading(false);
+            }
         } else {
             setError('Invalid YouTube URL');
         }
@@ -49,12 +73,14 @@ const AddYoutubeVideo: React.FC<AddYoutubeVideoProps> = ({ setVideos, goBack }) 
                     placeholder="Paste YouTube URL here"
                     className="w-full p-2 border border-gray-400 rounded text-sm text-black placeholder-gray-500"
                     aria-label="YouTube URL Input"
+                    disabled={isLoading}
                 />
                 <button 
                     onClick={handleAddYoutubeVideo} 
-                    className="mt-2 w-full bg-blue-500 text-white px-3 py-2 rounded text-sm font-bold hover:bg-blue-600 transition-colors"
+                    className="mt-2 w-full bg-blue-500 text-white px-3 py-2 rounded text-sm font-bold hover:bg-blue-600 transition-colors disabled:bg-blue-300"
+                    disabled={isLoading}
                 >
-                    Add Video
+                    {isLoading ? 'Adding...' : 'Add Video'}
                 </button>
                 {error && <p className="text-red-500 text-xs mt-1 text-center">{error}</p>}
             </div>

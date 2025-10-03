@@ -5,6 +5,7 @@ interface CustomMenuItem {
   id: any;
   name: string;
   subtext?: string;
+  thumbnail?: string;
 }
 interface MenuListProps {
   items: CustomMenuItem[];
@@ -38,11 +39,14 @@ const MenuList: React.FC<MenuListProps> = ({ items, activeIndex, setActiveIndex,
             index === activeIndex ? 'bg-gradient-to-b from-blue-400 to-blue-600 text-white' : 'text-black'
           }`}
         >
-          <div>
-            <p>{item.name}</p>
-            {item.subtext && <p className={`text-xs font-semibold ${index === activeIndex ? 'text-gray-200' : 'text-gray-500'}`}>{item.subtext}</p>}
+          <div className="flex items-center flex-grow overflow-hidden">
+            {item.thumbnail && <img src={item.thumbnail} alt={item.name} className="w-12 h-9 mr-3 object-cover flex-shrink-0 border border-gray-400" />}
+            <div className="flex-grow overflow-hidden">
+              <p className="truncate">{item.name}</p>
+              {item.subtext && <p className={`text-xs font-semibold truncate ${index === activeIndex ? 'text-gray-200' : 'text-gray-500'}`}>{item.subtext}</p>}
+            </div>
           </div>
-          {index === activeIndex && <span>&gt;</span>}
+          {index === activeIndex && <span className="pl-2">&gt;</span>}
         </li>
       ))}
     </ul>

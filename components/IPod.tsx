@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import Screen from './Screen';
 import ClickWheel from './ClickWheel';
@@ -14,22 +15,28 @@ interface IPodProps {
   onPlayPause: () => void;
   onNext: () => void;
   onPrev: () => void;
+  onSeek: (direction: 'forward' | 'backward') => void;
+  onSelect: () => void;
   songs: Song[];
   photos: Photo[];
   videos: Video[];
-  setVideos: React.Dispatch<React.SetStateAction<Video[]>>;
+  onAddYoutubeVideo: (video: Video) => void;
+  handleClearSongs: () => void;
+  handleClearVideos: () => void;
   playSong: (index: number) => void;
   playVideo: (index: number) => void;
   handleNavigateToNowPlaying: () => void;
   nowPlayingMedia: NowPlayingMedia | null;
   nowPlayingSong?: Song;
   isPlaying: boolean;
+  setIsPlaying: (isPlaying: boolean) => void;
   progress: number;
   duration: number;
   musicInputRef: React.RefObject<HTMLInputElement>;
   photoInputRef: React.RefObject<HTMLInputElement>;
   videoInputRef: React.RefObject<HTMLInputElement>;
   videoRef: React.RefObject<HTMLVideoElement>;
+  setYtPlayer: (player: any) => void;
   battery: BatteryState;
 }
 
@@ -49,7 +56,8 @@ const IPod: React.FC<IPodProps> = (props) => {
         onPlayPause={props.onPlayPause}
         onNext={props.onNext}
         onPrev={props.onPrev}
-        onSelect={() => {}} // Select is handled inside Screen component
+        onSeek={props.onSeek}
+        onSelect={props.onSelect}
         currentScreen={props.currentScreen}
         navigationStack={props.navigationStack}
         activeIndex={props.activeIndex}

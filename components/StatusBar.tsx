@@ -1,9 +1,8 @@
-
 import React from 'react';
 import { BatteryState } from '../types';
 
 interface StatusBarProps {
-  title: string;
+  title: React.ReactNode;
   isPlaying: boolean;
   battery: BatteryState;
 }

@@ -1,3 +1,4 @@
+
 export enum ScreenView {
   MAIN_MENU,
   MUSIC,
@@ -11,6 +12,8 @@ export enum ScreenView {
   VIDEO_LIST,
   PHOTO_VIEWER,
   ADD_YOUTUBE_VIDEO,
+  // Fix: Add an ACTION member to handle special menu items without navigating.
+  ACTION = -1,
 }
 
 export interface MediaFile {

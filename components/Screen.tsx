@@ -14,16 +14,20 @@ interface ScreenProps {
   setActiveIndex: (index: number | ((prev: number) => number)) => void;
   navigateTo: (screen: ScreenView) => void;
   goBack: () => void;
+  onNext: () => void;
   songs: Song[];
   photos: Photo[];
   videos: Video[];
-  setVideos: React.Dispatch<React.SetStateAction<Video[]>>;
+  onAddYoutubeVideo: (video: Video) => void;
+  handleClearSongs: () => void;
+  handleClearVideos: () => void;
   playSong: (index: number) => void;
   playVideo: (index: number) => void;
   handleNavigateToNowPlaying: () => void;
   nowPlayingMedia: NowPlayingMedia | null;
   nowPlayingSong?: Song;
   isPlaying: boolean;
+  setIsPlaying: (isPlaying: boolean) => void;
   progress: number;
   duration: number;
   navigationStack: ScreenView[];
@@ -31,6 +35,7 @@ interface ScreenProps {
   photoInputRef: React.RefObject<HTMLInputElement>;
   videoInputRef: React.RefObject<HTMLInputElement>;
   videoRef: React.RefObject<HTMLVideoElement>;
+  setYtPlayer: (player: any) => void;
   battery: BatteryState;
 }
 
@@ -52,9 +57,20 @@ const SplitScreenView: React.FC<{ children: React.ReactNode; nowPlayingSong?: So
     );
 };
 
+const getYouTubeId = (url: string): string | null => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+}
+
+const getYouTubeThumbnail = (url: string) => {
+    const videoId = getYouTubeId(url);
+    return videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : undefined;
+}
+
 
 const Screen: React.FC<ScreenProps> = (props) => {
-  const { currentScreen, activeIndex, setActiveIndex, navigateTo, songs, photos, videos, playSong, playVideo, musicInputRef, photoInputRef, videoInputRef, handleNavigateToNowPlaying } = props;
+  const { currentScreen, activeIndex, setActiveIndex, navigateTo, songs, photos, videos, playSong, playVideo, musicInputRef, photoInputRef, videoInputRef, handleNavigateToNowPlaying, handleClearSongs, handleClearVideos } = props;
 
   const mainMenu: MenuItem[] = [
     { id: ScreenView.MUSIC, name: 'Music' },
@@ -68,17 +84,20 @@ const Screen: React.FC<ScreenProps> = (props) => {
   const musicMenu: MenuItem[] = [
     { id: ScreenView.COVER_FLOW, name: 'Cover Flow' },
     { id: ScreenView.MUSIC, name: 'All Songs' }, // Re-using MUSIC to show song list
-    { id: -1 as ScreenView, name: 'Add Music' },
+    // Fix: Use ScreenView.ACTION for special menu items.
+    { id: ScreenView.ACTION, name: 'Add Music' },
   ];
   
   const photosMenu: MenuItem[] = [
       { id: ScreenView.PHOTO_VIEWER, name: 'View Photos' },
-      { id: -1 as ScreenView, name: 'Add Photos' },
+      // Fix: Use ScreenView.ACTION for special menu items.
+      { id: ScreenView.ACTION, name: 'Add Photos' },
   ];
 
   const videosMenu: MenuItem[] = [
       { id: ScreenView.VIDEO_LIST, name: 'View Videos' },
-      { id: -1 as ScreenView, name: 'Add Videos' },
+      // Fix: Use ScreenView.ACTION for special menu items.
+      { id: ScreenView.ACTION, name: 'Add Videos' },
       { id: ScreenView.ADD_YOUTUBE_VIDEO, name: 'Add YouTube Link' },
   ];
 
@@ -95,17 +114,29 @@ const Screen: React.FC<ScreenProps> = (props) => {
       case ScreenView.MUSIC:
          if(props.navigationStack[props.navigationStack.length-2] === ScreenView.MAIN_MENU) {
             return <SplitScreenView nowPlayingSong={props.nowPlayingSong}><MenuList items={musicMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
-                 if (id === -1) musicInputRef.current?.click();
+                 // Fix: Compare with ScreenView.ACTION for consistency.
+                 if (id === ScreenView.ACTION) musicInputRef.current?.click();
                  else if (id === ScreenView.MUSIC) navigateTo(99 as ScreenView); // special id for song list
                  else navigateTo(id);
             }} /></SplitScreenView>;
         }
         // Fallthrough for song list
       case 99 as ScreenView: // Song list
-        return <MenuList items={songs.map((s, i) => ({ id: i, name: s.name, subtext: s.artist }))} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={playSong} />;
+        const songItems = songs.map((s, i) => ({ id: i, name: s.name, subtext: s.artist }));
+        if (songs.length > 0) {
+            songItems.push({ id: 'clear', name: '[Clear All Songs]', subtext: 'This action cannot be undone.' });
+        }
+        return <MenuList items={songItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
+            if (id === 'clear') {
+                handleClearSongs();
+            } else {
+                playSong(id);
+            }
+        }} />;
       case ScreenView.PHOTOS:
         return <MenuList items={photosMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
-            if (id === -1) photoInputRef.current?.click();
+            // Fix: Compare with ScreenView.ACTION for consistency.
+            if (id === ScreenView.ACTION) photoInputRef.current?.click();
             else navigateTo(id);
         }} />;
       case ScreenView.PHOTO_VIEWER:
@@ -115,16 +146,40 @@ const Screen: React.FC<ScreenProps> = (props) => {
         </div>;
       case ScreenView.VIDEOS:
         return <MenuList items={videosMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
-            if (id === -1) videoInputRef.current?.click();
+            // Fix: Compare with ScreenView.ACTION for consistency.
+            if (id === ScreenView.ACTION) videoInputRef.current?.click();
             else navigateTo(id);
         }} />;
       case ScreenView.VIDEO_LIST:
         if (videos.length === 0) return <div className="flex-grow flex items-center justify-center text-gray-500">No Videos</div>;
-        return <MenuList items={videos.map((v, i) => ({ id: i, name: v.name }))} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={playVideo} />;
+        const videoItems = videos.map((v, i) => ({ 
+            id: i, 
+            name: v.name,
+            subtext: v.isYoutube ? 'YouTube' : 'Local File',
+            thumbnail: v.isYoutube ? getYouTubeThumbnail(v.url) : undefined,
+        }));
+        if (videos.length > 0) {
+            videoItems.push({ id: 'clear', name: '[Clear All Videos]', subtext: 'This action cannot be undone.' });
+        }
+        return <MenuList items={videoItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
+            if (id === 'clear') {
+                handleClearVideos();
+            } else {
+                playVideo(id);
+            }
+        }} />;
       case ScreenView.VIDEO_PLAYER:
-        return <VideoPlayer {...props} />;
+        return <VideoPlayer 
+            videos={props.videos} 
+            videoInputRef={props.videoInputRef}
+            nowPlayingMedia={props.nowPlayingMedia}
+            videoRef={props.videoRef}
+            setYtPlayer={props.setYtPlayer}
+            setIsPlaying={props.setIsPlaying}
+            onNext={props.onNext}
+        />;
       case ScreenView.ADD_YOUTUBE_VIDEO:
-        return <AddYoutubeVideo setVideos={props.setVideos} goBack={props.goBack} />;
+        return <AddYoutubeVideo onAddVideo={props.onAddYoutubeVideo} goBack={props.goBack} />;
       case ScreenView.EXTRAS:
         return <div className="flex-grow flex items-center justify-center text-gray-500">Extras not implemented.</div>;
       case ScreenView.SHUFFLE_PLAY:
@@ -151,8 +206,19 @@ const Screen: React.FC<ScreenProps> = (props) => {
         case ScreenView.VIDEOS: return "Videos";
         case ScreenView.VIDEO_LIST: return "All Videos";
         case ScreenView.VIDEO_PLAYER: 
-            const videoIndex = props.nowPlayingMedia?.type === 'video' ? props.nowPlayingMedia.index : -1;
-            return videoIndex !== -1 ? videos[videoIndex].name : "Videos";
+            const video = props.nowPlayingMedia?.type === 'video' ? videos[props.nowPlayingMedia.index] : null;
+            if (!video) return "Videos";
+
+            if (video.isYoutube) {
+                const videoId = getYouTubeId(video.url);
+                const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+                return (
+                    <a href={watchUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                        {video.name}
+                    </a>
+                )
+            }
+            return video.name;
         case ScreenView.EXTRAS: return "Extras";
         case ScreenView.NOW_PLAYING: 
             if (!props.nowPlayingSong) return "Now Playing";

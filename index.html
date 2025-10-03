@@ -7,6 +7,7 @@
     <title>iPod Classic Replica</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.5/dist/jsmediatags.min.js"></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
   <script type="importmap">
 {
   "imports": {
@@ -29,9 +30,9 @@
       `min()` selects the smaller of the two values, which prevents the iPod
       from overflowing either horizontally or vertically.
       
-      We use 98% of the viewport dimensions to leave a small margin around the iPod.
+      We use 100% of the viewport dimensions to maximize the iPod size.
     */
-    font-size: min(calc(98vw / 22.5), calc(98vh / 37.5));
+    font-size: min(calc(100vw / 22.5), calc(100vh / 37.5));
   }
 </style>
 </head>

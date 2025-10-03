@@ -1,11 +1,16 @@
 
+
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import IPod from './components/IPod';
-import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia } from './types';
+import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia, MenuItem } from './types';
+import * as db from './lib/db';
 
 declare global {
   interface Window {
     jsmediatags: any;
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
   }
   interface Navigator {
     getBattery: () => Promise<any>;
@@ -69,6 +74,8 @@ const App: React.FC = () => {
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const ytPlayerRef = useRef<any>(null);
+  const progressIntervalRef = useRef<number | null>(null);
 
   const musicInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -76,6 +83,46 @@ const App: React.FC = () => {
 
   const battery = useBattery();
   const currentScreen = navigationStack[navigationStack.length - 1];
+
+  useEffect(() => {
+    const loadData = async () => {
+      await db.initDB();
+      
+      // Load songs
+      const storedSongs = await db.getAllMedia<{id: string, name: string, artist: string, album: string, picture: string, file: File}>('songs');
+      const loadedSongs = storedSongs.map(s => ({ ...s, url: URL.createObjectURL(s.file) }));
+      setSongs(loadedSongs);
+
+      // Load photos
+      const storedPhotos = await db.getAllMedia<{id: string, name: string, file: File}>('photos');
+      const loadedPhotos = storedPhotos.map(p => ({ ...p, url: URL.createObjectURL(p.file) }));
+      setPhotos(loadedPhotos);
+
+      // Load local videos
+      const storedVideos = await db.getAllMedia<{id: string, name: string, file: File}>('videos');
+      const loadedLocalVideos = storedVideos.map(v => ({ ...v, url: URL.createObjectURL(v.file), isYoutube: false }));
+      
+      // Load YouTube videos from localStorage
+      const storedYTVideos = JSON.parse(localStorage.getItem('youtube_videos') || '[]');
+      
+      setVideos([...loadedLocalVideos, ...storedYTVideos]);
+    };
+
+    loadData();
+
+    return () => {
+        // Cleanup object URLs on unmount
+        songs.forEach(media => URL.revokeObjectURL(media.url));
+        photos.forEach(media => URL.revokeObjectURL(media.url));
+        videos.forEach(video => {
+            if (!video.isYoutube && video.url.startsWith('blob:')) {
+                URL.revokeObjectURL(video.url);
+            }
+        });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const navigateTo = (screen: ScreenView) => {
     setNavigationStack([...navigationStack, screen]);
@@ -107,6 +154,10 @@ const App: React.FC = () => {
     if (videoRef.current && !video.isYoutube) {
       videoRef.current.src = video.url;
     }
+    if (ytPlayerRef.current && ytPlayerRef.current.destroy) {
+        ytPlayerRef.current.destroy();
+    }
+    ytPlayerRef.current = null;
     setIsPlaying(true);
     navigateTo(ScreenView.VIDEO_PLAYER);
   }
@@ -159,47 +210,77 @@ const App: React.FC = () => {
 
   // Effect for handling play/pause
   useEffect(() => {
-    const mediaRef = nowPlayingMedia?.type === 'song' ? audioRef : videoRef;
-    const mediaElement = mediaRef.current;
-    if (!mediaElement || (nowPlayingMedia?.type === 'video' && videos[nowPlayingMedia.index].isYoutube)) return;
+    const isYT = nowPlayingMedia?.type === 'video' && videos[nowPlayingMedia.index]?.isYoutube;
 
-    if (isPlaying) {
-      mediaElement.play().catch(e => console.error("Error playing media:", e));
-    } else {
-      mediaElement.pause();
+    if (isYT && ytPlayerRef.current && typeof ytPlayerRef.current.getPlayerState === 'function') {
+      const playerState = ytPlayerRef.current.getPlayerState();
+      if (isPlaying && playerState !== window.YT.PlayerState.PLAYING) {
+        ytPlayerRef.current.playVideo();
+      } else if (!isPlaying && playerState === window.YT.PlayerState.PLAYING) {
+        ytPlayerRef.current.pauseVideo();
+      }
+    } else if (!isYT) {
+      const mediaRef = nowPlayingMedia?.type === 'song' ? audioRef : videoRef;
+      const mediaElement = mediaRef.current;
+      if (!mediaElement) return;
+
+      if (isPlaying) {
+        mediaElement.play().catch(e => console.error("Error playing media:", e));
+      } else {
+        mediaElement.pause();
+      }
     }
-  }, [isPlaying, nowPlayingMedia, songs, videos]);
+  }, [isPlaying, nowPlayingMedia, videos]);
 
   // Effect for tracking progress
   useEffect(() => {
-    const mediaRef = nowPlayingMedia?.type === 'song' ? audioRef : videoRef;
-    if (nowPlayingMedia?.type === 'video' && videos[nowPlayingMedia.index]?.isYoutube) {
-      setProgress(0);
-      setDuration(0);
-      return;
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
     }
-    const mediaElement = mediaRef.current;
-    if (!mediaElement) return;
-    
-    const updateProgress = () => {
-      if (!isNaN(mediaElement.duration)) {
-        setProgress(mediaElement.currentTime);
-        setDuration(mediaElement.duration);
-      }
-    };
-    const handleMediaEnd = () => handleNext();
 
-    mediaElement.addEventListener('timeupdate', updateProgress);
-    mediaElement.addEventListener('ended', handleMediaEnd);
-    mediaElement.addEventListener('loadedmetadata', updateProgress);
+    const isYT = nowPlayingMedia?.type === 'video' && videos[nowPlayingMedia.index]?.isYoutube;
+    if (isYT) {
+      progressIntervalRef.current = window.setInterval(() => {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
+          const currentTime = ytPlayerRef.current.getCurrentTime();
+          const duration = ytPlayerRef.current.getDuration();
+          setProgress(currentTime);
+          if (duration) setDuration(duration);
+        }
+      }, 250);
+    } else {
+      const mediaRef = nowPlayingMedia?.type === 'song' ? audioRef : videoRef;
+      const mediaElement = mediaRef.current;
+      if (!mediaElement) return;
+      
+      const updateProgress = () => {
+        if (!isNaN(mediaElement.duration)) {
+          setProgress(mediaElement.currentTime);
+          setDuration(mediaElement.duration);
+        }
+      };
+      const handleMediaEnd = () => handleNext();
+
+      mediaElement.addEventListener('timeupdate', updateProgress);
+      mediaElement.addEventListener('ended', handleMediaEnd);
+      mediaElement.addEventListener('loadedmetadata', updateProgress);
+
+      return () => {
+        mediaElement.removeEventListener('timeupdate', updateProgress);
+        mediaElement.removeEventListener('ended', handleMediaEnd);
+        mediaElement.removeEventListener('loadedmetadata', updateProgress);
+      };
+    }
 
     return () => {
-      mediaElement.removeEventListener('timeupdate', updateProgress);
-      mediaElement.removeEventListener('ended', handleMediaEnd);
-      mediaElement.removeEventListener('loadedmetadata', updateProgress);
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nowPlayingMedia, songs, videos]);
+  }, [nowPlayingMedia]);
 
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'music' | 'photo' | 'video') => {
@@ -207,12 +288,11 @@ const App: React.FC = () => {
     if (!files) return;
 
     Array.from(files).forEach((file: File) => {
-      const url = URL.createObjectURL(file);
       const id = `${file.name}-${file.lastModified}`;
       
       if (type === 'music') {
         window.jsmediatags.read(file, {
-          onSuccess: (tag: any) => {
+          onSuccess: async (tag: any) => {
             const { artist, album, title } = tag.tags;
             const picture = tag.tags.picture;
             let base64String = '';
@@ -220,24 +300,196 @@ const App: React.FC = () => {
               const base64 = btoa(String.fromCharCode.apply(null, picture.data));
               base64String = `data:${picture.format};base64,${base64}`;
             }
-            const newSong: Song = { id, name: title || file.name, url, artist: artist || 'Unknown Artist', album: album || 'Unknown Album', picture: base64String };
+            const songData = { id, name: title || file.name, artist: artist || 'Unknown Artist', album: album || 'Unknown Album', picture: base64String, file };
+            await db.addMedia('songs', songData);
+            const newSong: Song = { ...songData, url: URL.createObjectURL(file) };
             setSongs(prev => [...prev, newSong]);
           },
-          onError: (error: any) => {
+          onError: async (error: any) => {
             console.error(error);
-            const newSong: Song = { id, name: file.name, url, artist: 'Unknown Artist', album: 'Unknown Album', picture: '' };
+            const songData = { id, name: file.name, artist: 'Unknown Artist', album: 'Unknown Album', picture: '', file };
+            await db.addMedia('songs', songData);
+            const newSong: Song = { ...songData, url: URL.createObjectURL(file) };
             setSongs(prev => [...prev, newSong]);
           }
         });
       } else if (type === 'photo') {
-        const newPhoto: Photo = { id, name: file.name, url };
-        setPhotos(prev => [...prev, newPhoto]);
+          const photoData = { id, name: file.name, file };
+          db.addMedia('photos', photoData);
+          const newPhoto: Photo = { ...photoData, url: URL.createObjectURL(file) };
+          setPhotos(prev => [...prev, newPhoto]);
       } else if (type === 'video') {
-         const newVideo: Video = { id, name: file.name, url, isYoutube: false };
-         setVideos(prev => [...prev, newVideo]);
+          const videoData = { id, name: file.name, file };
+          db.addMedia('videos', videoData);
+          const newVideo: Video = { ...videoData, url: URL.createObjectURL(file), isYoutube: false };
+          setVideos(prev => [...prev, newVideo]);
       }
     });
   };
+
+  const handleAddYoutubeVideo = (video: Video) => {
+    const currentYTVideos = JSON.parse(localStorage.getItem('youtube_videos') || '[]');
+    const updatedYTVideos = [...currentYTVideos.filter((v: Video) => v.id !== video.id), video];
+    localStorage.setItem('youtube_videos', JSON.stringify(updatedYTVideos));
+    setVideos(prev => [...prev.filter(v => v.id !== video.id), video]);
+  };
+
+  const handleClearSongs = async () => {
+    await db.clearStore('songs');
+    songs.forEach(song => URL.revokeObjectURL(song.url));
+    setSongs([]);
+    setActiveIndex(0);
+  };
+
+  const handleClearVideos = async () => {
+    await db.clearStore('videos');
+    localStorage.removeItem('youtube_videos');
+    videos.forEach(video => {
+        if (!video.isYoutube && video.url.startsWith('blob:')) {
+            URL.revokeObjectURL(video.url);
+        }
+    });
+    setVideos([]);
+    setActiveIndex(0);
+  };
+
+  const handleSeek = (direction: 'forward' | 'backward') => {
+    if (!nowPlayingMedia) return;
+    const seekAmount = 5; // 5 seconds
+    const isYT = nowPlayingMedia.type === 'video' && videos[nowPlayingMedia.index].isYoutube;
+
+    if (isYT && ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
+      const currentTime = ytPlayerRef.current.getCurrentTime();
+      const newTime = direction === 'forward' ? currentTime + seekAmount : currentTime - seekAmount;
+      ytPlayerRef.current.seekTo(newTime, true);
+    } else {
+      const mediaRef = nowPlayingMedia.type === 'song' ? audioRef : videoRef;
+      if (mediaRef.current) {
+        mediaRef.current.currentTime += (direction === 'forward' ? seekAmount : -seekAmount);
+      }
+    }
+  };
+
+  const setYtPlayer = (player: any) => {
+    ytPlayerRef.current = player;
+  };
+
+  const handleSelect = () => {
+    const mainMenu: MenuItem[] = [
+        { id: ScreenView.MUSIC, name: 'Music' },
+        { id: ScreenView.PHOTOS, name: 'Photos' },
+        { id: ScreenView.VIDEOS, name: 'Videos' },
+        { id: ScreenView.EXTRAS, name: 'Extras' },
+        { id: ScreenView.SHUFFLE_PLAY, name: 'Shuffle Songs' },
+        { id: ScreenView.NOW_PLAYING, name: 'Now Playing' },
+    ];
+    
+    const musicMenu: MenuItem[] = [
+        { id: ScreenView.COVER_FLOW, name: 'Cover Flow' },
+        { id: ScreenView.MUSIC, name: 'All Songs' }, 
+        // Fix: Use ScreenView.ACTION for special menu items.
+        { id: ScreenView.ACTION, name: 'Add Music' },
+    ];
+    
+    const photosMenu: MenuItem[] = [
+        { id: ScreenView.PHOTO_VIEWER, name: 'View Photos' },
+        // Fix: Use ScreenView.ACTION for special menu items.
+        { id: ScreenView.ACTION, name: 'Add Photos' },
+    ];
+
+    const videosMenu: MenuItem[] = [
+        { id: ScreenView.VIDEO_LIST, name: 'View Videos' },
+        // Fix: Use ScreenView.ACTION for special menu items.
+        { id: ScreenView.ACTION, name: 'Add Videos' },
+        { id: ScreenView.ADD_YOUTUBE_VIDEO, name: 'Add YouTube Link' },
+    ];
+
+    switch (currentScreen) {
+        case ScreenView.MAIN_MENU:
+            const selectedMainMenuItem = mainMenu[activeIndex];
+            if (selectedMainMenuItem.id === ScreenView.NOW_PLAYING) {
+                handleNavigateToNowPlaying();
+            } else if (selectedMainMenuItem.id === ScreenView.SHUFFLE_PLAY) {
+                if (songs.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * songs.length);
+                    playSong(randomIndex);
+                }
+            } else {
+                navigateTo(selectedMainMenuItem.id);
+            }
+            break;
+        
+        case ScreenView.MUSIC:
+              if(navigationStack[navigationStack.length-2] === ScreenView.MAIN_MENU) {
+                const selectedMusicMenuItem = musicMenu[activeIndex];
+                // Fix: Compare with ScreenView.ACTION to resolve type error.
+                if (selectedMusicMenuItem.id === ScreenView.ACTION) {
+                    musicInputRef.current?.click();
+                } else if (selectedMusicMenuItem.id === ScreenView.MUSIC) {
+                    navigateTo(99 as ScreenView); // special id for song list
+                } else {
+                    navigateTo(selectedMusicMenuItem.id);
+                }
+              }
+            break;
+        
+        case 99 as ScreenView: // Song List
+            if (songs.length > 0 && activeIndex === songs.length) { // "Clear" button
+                handleClearSongs();
+            } else if (songs[activeIndex]) {
+                playSong(activeIndex);
+            }
+            break;
+
+        case ScreenView.PHOTOS:
+            const selectedPhotosMenuItem = photosMenu[activeIndex];
+            // Fix: Compare with ScreenView.ACTION to resolve type error.
+            if (selectedPhotosMenuItem.id === ScreenView.ACTION) {
+                photoInputRef.current?.click();
+            } else {
+                navigateTo(selectedPhotosMenuItem.id);
+            }
+            break;
+
+        case ScreenView.VIDEOS:
+            const selectedVideosMenuItem = videosMenu[activeIndex];
+            // Fix: Compare with ScreenView.ACTION to resolve type error.
+            if (selectedVideosMenuItem.id === ScreenView.ACTION) {
+                videoInputRef.current?.click();
+            } else {
+                navigateTo(selectedVideosMenuItem.id);
+            }
+            break;
+
+        case ScreenView.VIDEO_LIST:
+            if (videos.length > 0 && activeIndex === videos.length) { // "Clear" button
+                handleClearVideos();
+            } else if (videos[activeIndex]) {
+                playVideo(activeIndex);
+            }
+            break;
+
+        case ScreenView.COVER_FLOW:
+            const albumMap = new Map();
+            songs.forEach(song => {
+                if (song.album && !albumMap.has(song.album)) {
+                    albumMap.set(song.album, song);
+                }
+            });
+            const albums = Array.from(albumMap.values());
+            const activeAlbum = albums[activeIndex];
+            if (activeAlbum) {
+                const firstSongOfAlbumIndex = songs.findIndex(s => s.album === activeAlbum.album);
+                if(firstSongOfAlbumIndex !== -1) {
+                    playSong(firstSongOfAlbumIndex);
+                }
+            }
+            break;
+        
+        default:
+            break;
+    }
+};
 
   return (
     <>
@@ -251,22 +503,28 @@ const App: React.FC = () => {
         onPlayPause={handlePlayPause}
         onNext={handleNext}
         onPrev={handlePrev}
+        onSeek={handleSeek}
+        onSelect={handleSelect}
         songs={songs}
         photos={photos}
         videos={videos}
-        setVideos={setVideos}
+        onAddYoutubeVideo={handleAddYoutubeVideo}
+        handleClearSongs={handleClearSongs}
+        handleClearVideos={handleClearVideos}
         playSong={playSong}
         playVideo={playVideo}
         handleNavigateToNowPlaying={handleNavigateToNowPlaying}
         nowPlayingMedia={nowPlayingMedia}
         nowPlayingSong={nowPlayingMedia?.type === 'song' ? songs[nowPlayingMedia.index] : undefined}
         isPlaying={isPlaying}
+        setIsPlaying={setIsPlaying}
         progress={progress}
         duration={duration}
         musicInputRef={musicInputRef}
         photoInputRef={photoInputRef}
         videoInputRef={videoInputRef}
         videoRef={videoRef}
+        setYtPlayer={setYtPlayer}
         battery={battery}
       />
       <audio ref={audioRef} />
