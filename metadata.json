@@ -1,0 +1,5 @@
+{
+  "name": "iPod Classic Replica",
+  "description": "A fully functional replica of the classic iPod, allowing users to play local music, videos, and view photos. Features an interactive click wheel and a faithful recreation of the original UI. Also supports embedding YouTube videos.",
+  "requestFramePermissions": []
+}

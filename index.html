@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iPod Classic Replica</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.5/dist/jsmediatags.min.js"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/"
+  }
+}
+</script>
+<style>
+  html {
+    /*
+      Set the root font size based on the smaller of the viewport dimensions
+      to ensure the iPod fits on screen while maintaining its aspect ratio.
+      The iPod's dimensions are 22.5rem (width) and 37.5rem (height).
+      
+      - `calc(100vw / 22.5)` scales the font size based on the viewport width.
+      - `calc(100vh / 37.5)` scales the font size based on the viewport height.
+      
+      `min()` selects the smaller of the two values, which prevents the iPod
+      from overflowing either horizontally or vertically.
+      
+      We use 98% of the viewport dimensions to leave a small margin around the iPod.
+    */
+    font-size: min(calc(98vw / 22.5), calc(98vh / 37.5));
+  }
+</style>
+</head>
+  <body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
