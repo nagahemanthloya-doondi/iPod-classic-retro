@@ -42,7 +42,7 @@ interface IPodProps {
 
 const IPod: React.FC<IPodProps> = (props) => {
   return (
-    <div className="w-[22.5rem] h-[37.5rem] bg-gradient-to-b from-gray-200 to-gray-400 rounded-3xl shadow-2xl flex flex-col items-center justify-start p-4 border-2 border-gray-500">
+    <div className="w-[22.5rem] h-full bg-gradient-to-b from-gray-200 to-gray-400 rounded-3xl shadow-2xl flex flex-col items-center justify-between p-4 border-2 border-gray-500">
       {/* Screen Bezel */}
       <div className="w-full h-[16.25rem] bg-gray-700 rounded-md border-2 border-gray-800 flex items-center justify-center mb-8">
           {/* Screen Content */}

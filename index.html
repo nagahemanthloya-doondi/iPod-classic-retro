@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>iPod Classic Replica</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.5/dist/jsmediatags.min.js"></script>
@@ -25,18 +25,33 @@
       The iPod's dimensions are 22.5rem (width) and 37.5rem (height).
       
       - `calc(100vw / 22.5)` scales the font size based on the viewport width.
-      - `calc(100vh / 37.5)` scales the font size based on the viewport height.
+      - `calc(100svh / 37.5)` scales the font size based on the stable small viewport height.
       
       `min()` selects the smaller of the two values, which prevents the iPod
       from overflowing either horizontally or vertically.
       
       We use 100% of the viewport dimensions to maximize the iPod size.
+      Using `svh` instead of `vh` prevents layout shifts when browser UI appears/disappears.
     */
-    font-size: min(calc(100vw / 22.5), calc(100vh / 37.5));
+    font-size: min(calc(100vw / 22.5), calc(100svh / 37.5));
+  }
+  body {
+    /* 
+      Ensure the body takes up the full stable viewport height and respects
+      safe areas on devices with notches or dynamic islands. This prevents
+      the UI from jumping when browser chrome appears and ensures the iPod
+      is centered within the usable screen area.
+    */
+    height: 100vh; /* Fallback for older browsers */
+    height: 100svh;
+    /* Account for safe areas so the flex centering works correctly */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    /* The flexbox container needs to account for the padding, so we use box-sizing */
+    box-sizing: border-box;
   }
 </style>
 </head>
-  <body class="bg-gray-100 flex items-center justify-center min-h-screen">
+  <body class="bg-gray-100 flex items-stretch justify-center">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

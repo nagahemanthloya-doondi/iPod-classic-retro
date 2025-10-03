@@ -29,10 +29,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
                 videoId: videoId,
                 playerVars: {
                     autoplay: 1,
-                    controls: 0,
+                    controls: 1, // Show player controls
                     rel: 0,
                     modestbranding: 1,
-                    fs: 0, // Disable fullscreen button
+                    fs: 1, // Enable fullscreen button
                 },
                 events: {
                     'onReady': (event) => {
