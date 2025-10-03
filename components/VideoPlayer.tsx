@@ -76,7 +76,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
             {activeVideo.isYoutube ? (
                 <div id="youtube-player" className="w-full h-full"></div>
             ) : (
-                <video ref={videoRef} src={activeVideo.url} className="max-w-full max-h-full object-contain">
+                <video ref={videoRef} controls src={activeVideo.url} className="max-w-full max-h-full object-contain">
                     Your browser does not support the video tag.
                 </video>
             )}

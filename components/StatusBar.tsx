@@ -3,17 +3,15 @@ import { BatteryState } from '../types';
 
 interface StatusBarProps {
   title: React.ReactNode;
-  isPlaying: boolean;
   battery: BatteryState;
 }
 
-const StatusBar: React.FC<StatusBarProps> = ({ title, isPlaying, battery }) => {
+const StatusBar: React.FC<StatusBarProps> = ({ title, battery }) => {
   return (
     <div className="bg-gradient-to-b from-gray-300 to-gray-400 text-black font-bold text-sm px-2 py-0.5 flex justify-between items-center w-full flex-shrink-0 border-b-2 border-gray-500">
       <span className="w-1/3 text-left"></span> {/* Placeholder for left content */}
       <span className="w-1/3 text-center truncate">{title}</span>
       <div className="w-1/3 flex items-center justify-end">
-        {isPlaying && <span className="mr-2 text-lg">❚❚</span>}
         {battery.supported && (
           <div className="flex items-center">
             {battery.charging && <span className="mr-1 text-green-500 text-xs">⚡</span>}

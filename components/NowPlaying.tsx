@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Song } from '../types';
+import { MUSIC_ICON_SVG } from '../lib/constants';
 
 interface NowPlayingProps {
   nowPlayingSong?: Song;
@@ -39,7 +40,7 @@ const NowPlaying: React.FC<NowPlayingProps> = ({ nowPlayingSong, isPlaying, prog
         
         <div className="flex-grow flex items-center justify-center mt-2">
             <img 
-                src={nowPlayingSong.picture || 'https://picsum.photos/150'} 
+                src={nowPlayingSong.picture || MUSIC_ICON_SVG} 
                 alt="Album Art" 
                 className="w-[9.375rem] h-[9.375rem] object-cover border border-gray-400 shadow-lg"
             />

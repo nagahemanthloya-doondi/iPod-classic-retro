@@ -2,11 +2,12 @@
 import React from 'react';
 import { ScreenView, Song, Photo, Video, MenuItem, BatteryState, NowPlayingMedia } from '../types';
 import StatusBar from './StatusBar';
-import MenuList from './MenuList';
+import MenuList, { CustomMenuItem } from './MenuList';
 import NowPlaying from './NowPlaying';
 import CoverFlow from './CoverFlow';
 import VideoPlayer from './VideoPlayer';
 import AddYoutubeVideo from './AddYoutubeVideo';
+import { MUSIC_ICON_SVG } from '../lib/constants';
 
 interface ScreenProps {
   currentScreen: ScreenView;
@@ -48,7 +49,7 @@ const SplitScreenView: React.FC<{ children: React.ReactNode; nowPlayingSong?: So
             </div>
             <div className="w-1/2 h-full flex items-center justify-center bg-gradient-to-b from-gray-100 to-gray-300">
                  <img 
-                    src={nowPlayingSong?.picture || 'https://i.scdn.co/image/ab67616d0000b273b46f74097655d7f353caab14'} 
+                    src={nowPlayingSong?.picture || MUSIC_ICON_SVG} 
                     alt="Album Art" 
                     className="w-[7.5rem] h-[7.5rem] object-cover border border-gray-400 shadow-md"
                 />
@@ -122,7 +123,12 @@ const Screen: React.FC<ScreenProps> = (props) => {
         }
         // Fallthrough for song list
       case 99 as ScreenView: // Song list
-        const songItems = songs.map((s, i) => ({ id: i, name: s.name, subtext: s.artist }));
+        const songItems: CustomMenuItem[] = songs.map((s, i) => ({ 
+            id: i, 
+            name: s.name, 
+            subtext: s.artist,
+            thumbnail: s.picture || MUSIC_ICON_SVG
+        }));
         if (songs.length > 0) {
             songItems.push({ id: 'clear', name: '[Clear All Songs]', subtext: 'This action cannot be undone.' });
         }
@@ -234,7 +240,7 @@ const Screen: React.FC<ScreenProps> = (props) => {
 
   return (
     <div className="bg-[#cdd3d8] w-full h-full flex flex-col overflow-hidden select-none">
-      <StatusBar title={getTitleForScreen()} isPlaying={props.isPlaying} battery={props.battery} />
+      <StatusBar title={getTitleForScreen()} battery={props.battery} />
       <div className="flex-grow overflow-hidden flex flex-col">
         {getScreenContent()}
       </div>

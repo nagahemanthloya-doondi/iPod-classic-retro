@@ -1,6 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { Song } from '../types';
+import { MUSIC_ICON_SVG } from '../lib/constants';
 
 interface CoverFlowProps {
   songs: Song[];
@@ -58,7 +59,7 @@ const CoverFlow: React.FC<CoverFlowProps> = ({ songs, activeIndex, playSong }) =
                 onClick={() => handleAlbumClick(album.album)}
               >
                 <img
-                  src={album.picture || 'https://picsum.photos/160'}
+                  src={album.picture || MUSIC_ICON_SVG}
                   alt={album.album}
                   className="w-full h-full object-cover border-4 border-white shadow-lg"
                 />

@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef } from 'react';
 
-interface CustomMenuItem {
+export interface CustomMenuItem {
   id: any;
   name: string;
   subtext?: string;

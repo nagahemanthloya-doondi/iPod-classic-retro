@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import IPod from './components/IPod';
 import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia, MenuItem } from './types';
@@ -261,15 +262,21 @@ const App: React.FC = () => {
         }
       };
       const handleMediaEnd = () => handleNext();
+      const handlePlay = () => setIsPlaying(true);
+      const handlePause = () => setIsPlaying(false);
 
       mediaElement.addEventListener('timeupdate', updateProgress);
       mediaElement.addEventListener('ended', handleMediaEnd);
       mediaElement.addEventListener('loadedmetadata', updateProgress);
+      mediaElement.addEventListener('play', handlePlay);
+      mediaElement.addEventListener('pause', handlePause);
 
       return () => {
         mediaElement.removeEventListener('timeupdate', updateProgress);
         mediaElement.removeEventListener('ended', handleMediaEnd);
         mediaElement.removeEventListener('loadedmetadata', updateProgress);
+        mediaElement.removeEventListener('play', handlePlay);
+        mediaElement.removeEventListener('pause', handlePause);
       };
     }
 
