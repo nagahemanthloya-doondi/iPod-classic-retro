@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { ScreenView, Song, Photo, Video, MenuItem, BatteryState, NowPlayingMedia, J2MEApp, Theme } from '../types';
 import StatusBar from './StatusBar';
@@ -86,12 +85,13 @@ const getYouTubeThumbnail = (url: string) => {
 }
 
 const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => void;}> = ({ onAddVideo, goBack }) => {
+    const [channelName, setChannelName] = useState('');
     const [iptvUrl, setIptvUrl] = useState('');
     const [error, setError] = useState('');
 
     const handleAddIptvLink = () => {
-        if (!iptvUrl) {
-            setError('Please enter a URL');
+        if (!channelName || !iptvUrl) {
+            setError('Please enter a channel name and URL');
             return;
         }
         
@@ -101,18 +101,15 @@ const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => v
         }
 
         try {
-            // Use URL as name, or try to parse a name from it
-            const urlParts = iptvUrl.split('/');
-            const name = urlParts.find(part => part.toLowerCase().includes('.m3u')) || urlParts[urlParts.length - 1] || iptvUrl;
-
             const newVideo: Video = {
                 id: `iptv-${iptvUrl}`,
-                name: name,
+                name: channelName,
                 url: iptvUrl,
                 isYoutube: false,
                 isIPTV: true,
             };
             onAddVideo(newVideo);
+            setChannelName('');
             setIptvUrl('');
             setError('');
             goBack();
@@ -126,6 +123,14 @@ const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => v
         <div className="flex-grow flex flex-col items-center justify-center relative">
              <h2 className="bg-gradient-to-b from-gray-200 to-gray-300 text-black text-center font-bold py-1 border-b-2 border-gray-400 w-full flex-shrink-0 absolute top-0">Add IPTV Link</h2>
             <div className="w-full px-4">
+                <input
+                    type="text"
+                    value={channelName}
+                    onChange={(e) => setChannelName(e.target.value)}
+                    placeholder="Enter Channel Name"
+                    className="w-full p-2 border border-gray-400 rounded text-sm text-black placeholder-gray-500 mb-2"
+                    aria-label="Channel Name Input"
+                />
                 <input
                     type="text"
                     value={iptvUrl}

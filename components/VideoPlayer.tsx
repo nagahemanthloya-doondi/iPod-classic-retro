@@ -82,14 +82,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
         }
 
         if (activeVideo.isIPTV) {
+            const PROXY_URL = 'https://api.allorigins.win/raw?url=';
+            const streamUrl = `${PROXY_URL}${encodeURIComponent(activeVideo.url)}`;
             const { Hls } = window;
+
             if (Hls && Hls.isSupported()) {
                 const hls = new Hls();
                 hlsRef.current = hls;
-                hls.loadSource(activeVideo.url);
+                hls.loadSource(streamUrl);
                 hls.attachMedia(videoElement);
             } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-                videoElement.src = activeVideo.url;
+                videoElement.src = streamUrl;
             } else {
                 console.error("HLS playback not supported.");
             }
