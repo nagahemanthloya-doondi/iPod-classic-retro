@@ -1,3 +1,4 @@
+
 import React, { useRef, useCallback, useEffect, useState } from 'react';
 import Screen from './Screen';
 import ClickWheel from './ClickWheel';
@@ -15,7 +16,7 @@ interface IPodProps {
   onNext: () => void;
   onPrev: () => void;
   onSeek: (direction: 'forward' | 'backward') => void;
-  onSelect: () => void;
+  onSelect: (selectedId?: any) => void;
   songs: Song[];
   photos: Photo[];
   videos: Video[];

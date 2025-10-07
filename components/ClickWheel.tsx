@@ -1,3 +1,4 @@
+
 import React, { useRef, useCallback, useEffect } from 'react';
 import { ScreenView, Song, Photo, Video, J2MEApp } from '../types';
 import { BrickBreakerRef, SnakeRef } from '../App';
@@ -8,7 +9,7 @@ interface ClickWheelProps {
   onNext: () => void;
   onPrev: () => void;
   onSeek: (direction: 'forward' | 'backward') => void;
-  onSelect: () => void;
+  onSelect: (selectedId?: any) => void;
   currentScreen: ScreenView;
   navigationStack: ScreenView[];
   activeIndex: number;

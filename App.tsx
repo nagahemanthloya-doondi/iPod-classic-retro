@@ -481,7 +481,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSelect = () => {
+  const handleSelect = (selectedId?: any) => {
     const mainMenu: MenuItem[] = [
         { id: ScreenView.MUSIC, name: 'Music' },
         { id: ScreenView.PHOTOS, name: 'Photos' },
@@ -535,91 +535,141 @@ const App: React.FC = () => {
     ];
 
     switch (currentScreen) {
-        case ScreenView.MAIN_MENU:
-            const selectedMainMenuItem = mainMenu[activeIndex];
-            if (selectedMainMenuItem.id === ScreenView.NOW_PLAYING) {
+        case ScreenView.MAIN_MENU: {
+            const idToUse = selectedId !== undefined ? selectedId : mainMenu[activeIndex].id;
+            
+            // For mouse clicks, update the active index to match selection
+            if (selectedId !== undefined) {
+                const newIndex = mainMenu.findIndex(item => item.id === idToUse);
+                if (newIndex !== -1) setActiveIndex(newIndex);
+            }
+
+            if (idToUse === ScreenView.NOW_PLAYING) {
                 handleNavigateToNowPlaying();
-            } else if (selectedMainMenuItem.id === ScreenView.SHUFFLE_PLAY) {
+            } else if (idToUse === ScreenView.SHUFFLE_PLAY) {
                 if (songs.length > 0) {
                     const randomIndex = Math.floor(Math.random() * songs.length);
                     playSong(randomIndex);
                 }
             } else {
-                navigateTo(selectedMainMenuItem.id);
+                navigateTo(idToUse);
             }
             break;
+        }
         
-        case ScreenView.MUSIC:
-              if(navigationStack[navigationStack.length-2] === ScreenView.MAIN_MENU) {
-                const selectedMusicMenuItem = musicMenu[activeIndex];
-                if (selectedMusicMenuItem.id === ScreenView.ACTION) {
+        case ScreenView.MUSIC: {
+            if(navigationStack[navigationStack.length - 2] === ScreenView.MAIN_MENU) {
+                const idToUse = selectedId !== undefined ? selectedId : musicMenu[activeIndex].id;
+                
+                if (selectedId !== undefined) {
+                    const newIndex = musicMenu.findIndex(item => item.id === idToUse);
+                    if (newIndex !== -1) setActiveIndex(newIndex);
+                }
+
+                if (idToUse === ScreenView.ACTION) {
                     musicInputRef.current?.click();
-                } else if (selectedMusicMenuItem.id === ScreenView.MUSIC) {
+                } else if (idToUse === ScreenView.MUSIC) {
                     navigateTo(99 as ScreenView); // special id for song list
                 } else {
-                    navigateTo(selectedMusicMenuItem.id);
+                    navigateTo(idToUse);
                 }
-              }
-            break;
-        
-        case 99 as ScreenView: // Song List
-            if (songs.length > 0 && activeIndex === songs.length) { // "Clear" button
-                handleClearSongs();
-            } else if (songs[activeIndex]) {
-                playSong(activeIndex);
+            } else { // Song list was rendered via fallthrough
+                const songIndex = selectedId ?? activeIndex;
+                if (songs.length > 0 && songIndex === songs.length) { // "Clear" button
+                    handleClearSongs();
+                } else if (songs[songIndex]) {
+                    playSong(songIndex);
+                }
             }
             break;
+        }
+        
+        case 99 as ScreenView: { // Song List
+            const songIndex = selectedId ?? activeIndex;
+            if (selectedId === 'clear' || (selectedId === undefined && songIndex === songs.length)) {
+                handleClearSongs();
+            } else if (songs[songIndex]) {
+                playSong(songIndex);
+            }
+            break;
+        }
 
-        case ScreenView.PHOTOS:
-            const selectedPhotosMenuItem = photosMenu[activeIndex];
-            if (selectedPhotosMenuItem.id === ScreenView.ACTION) {
+        case ScreenView.PHOTOS: {
+            const idToUse = selectedId !== undefined ? selectedId : photosMenu[activeIndex].id;
+             if (selectedId !== undefined) {
+                const newIndex = photosMenu.findIndex(item => item.id === idToUse);
+                if (newIndex !== -1) setActiveIndex(newIndex);
+            }
+            if (idToUse === ScreenView.ACTION) {
                 photoInputRef.current?.click();
             } else {
-                navigateTo(selectedPhotosMenuItem.id);
+                navigateTo(idToUse);
             }
             break;
+        }
 
-        case ScreenView.VIDEOS:
-            const selectedVideosMenuItem = videosMenu[activeIndex];
-            if (selectedVideosMenuItem.id === ScreenView.ACTION) {
+        case ScreenView.VIDEOS: {
+            const idToUse = selectedId !== undefined ? selectedId : videosMenu[activeIndex].id;
+             if (selectedId !== undefined) {
+                const newIndex = videosMenu.findIndex(item => item.id === idToUse);
+                if (newIndex !== -1) setActiveIndex(newIndex);
+            }
+            if (idToUse === ScreenView.ACTION) {
                 videoInputRef.current?.click();
             } else {
-                navigateTo(selectedVideosMenuItem.id);
+                navigateTo(idToUse);
             }
             break;
+        }
         
-        case ScreenView.SETTINGS:
-            navigateTo(settingsMenu[activeIndex].id);
+        case ScreenView.SETTINGS: {
+            const idToUse = selectedId !== undefined ? selectedId : settingsMenu[activeIndex].id;
+            navigateTo(idToUse);
             break;
+        }
 
-        case ScreenView.THEMES:
+        case ScreenView.THEMES: {
             const themes: Theme[] = ['classic', 'dark', 'gold'];
-            setTheme(themes[activeIndex]);
+            const indexToUse = selectedId !== undefined ? themes.findIndex(t => t === selectedId) : activeIndex;
+            if (selectedId !== undefined) setActiveIndex(indexToUse);
+            setTheme(themes[indexToUse]);
             break;
+        }
 
-        case ScreenView.EXTRAS:
-            navigateTo(extrasMenu[activeIndex].id);
+        case ScreenView.EXTRAS: {
+            const idToUse = selectedId !== undefined ? selectedId : extrasMenu[activeIndex].id;
+            navigateTo(idToUse);
             break;
+        }
 
-        case ScreenView.GAMES:
-            const selectedGame = gamesMenu[activeIndex];
-            if (selectedGame.id !== ScreenView.ACTION) {
-                navigateTo(selectedGame.id);
+        case ScreenView.GAMES: {
+            const idToUse = selectedId !== undefined ? selectedId : gamesMenu[activeIndex].id;
+             if (selectedId !== undefined) {
+                const newIndex = gamesMenu.findIndex(item => item.id === idToUse);
+                if (newIndex !== -1) setActiveIndex(newIndex);
+            }
+            if (idToUse !== ScreenView.ACTION) {
+                navigateTo(idToUse);
             }
             break;
+        }
 
-        case ScreenView.APPS:
+        case ScreenView.APPS: {
             const totalApps = j2meApps.length;
-            if (activeIndex === 0) { // 'Add App'
+            const indexToUse = selectedId ?? activeIndex;
+
+            if (indexToUse === 0) { // 'Add App'
                 j2meInputRef.current?.click();
-            } else if (totalApps > 0 && activeIndex === totalApps + 1) { // 'Clear'
+            } else if (totalApps > 0 && indexToUse === totalApps + 1) { // 'Clear'
                 handleClearJ2meApps();
-            } else if (activeIndex > 0 && activeIndex <= totalApps) {
-                const selectedApp = j2meApps[activeIndex - 1];
+            } else if (indexToUse > 0 && indexToUse <= totalApps) {
+                const selectedApp = j2meApps[indexToUse - 1];
                 setRunningApp(selectedApp);
+                // Fix: Corrected typo from JME_RUNNER to J2ME_RUNNER
                 navigateTo(ScreenView.J2ME_RUNNER);
             }
             break;
+        }
 
         case ScreenView.BRICK_BREAKER:
             brickBreakerRef.current?.startGame();
@@ -629,30 +679,34 @@ const App: React.FC = () => {
             snakeRef.current?.startGame();
             break;
 
-        case ScreenView.VIDEO_LIST:
-            if (videos.length > 0 && activeIndex === videos.length) { // "Clear" button
+        case ScreenView.VIDEO_LIST: {
+            const indexToUse = selectedId ?? activeIndex;
+            if (selectedId === 'clear' || (selectedId === undefined && indexToUse === videos.length)) {
                 handleClearVideos();
-            } else if (videos[activeIndex]) {
-                playVideo(activeIndex);
+            } else if (videos[indexToUse]) {
+                playVideo(indexToUse);
             }
             break;
+        }
         
-        case ScreenView.LIVE_TV:
+        case ScreenView.LIVE_TV: {
             const iptvVideos = videos.filter(v => v.isIPTV);
-            if (iptvVideos.length > 0 && activeIndex === iptvVideos.length) { // "Clear" button
-                const otherVideos = videos.filter(v => !v.isIPTV);
+            const indexToUse = selectedId ?? activeIndex;
+            if (selectedId === 'clear' || (selectedId === undefined && indexToUse === iptvVideos.length)) {
+                 const otherVideos = videos.filter(v => !v.isIPTV);
                 localStorage.removeItem('iptv_videos');
                 setVideos(otherVideos);
                 setActiveIndex(0);
-            } else if (iptvVideos[activeIndex]) {
-                const originalIndex = videos.findIndex(v => v.id === iptvVideos[activeIndex].id);
+            } else if (iptvVideos[indexToUse]) {
+                const originalIndex = videos.findIndex(v => v.id === iptvVideos[indexToUse].id);
                 if (originalIndex !== -1) {
                     playVideo(originalIndex);
                 }
             }
             break;
+        }
 
-        case ScreenView.COVER_FLOW:
+        case ScreenView.COVER_FLOW: {
             const albumMap = new Map();
             songs.forEach(song => {
                 if (song.album && !albumMap.has(song.album)) {
@@ -660,7 +714,8 @@ const App: React.FC = () => {
                 }
             });
             const albums = Array.from(albumMap.values());
-            const activeAlbum = albums[activeIndex];
+            const indexToUse = selectedId ?? activeIndex;
+            const activeAlbum = albums[indexToUse];
             if (activeAlbum) {
                 const firstSongOfAlbumIndex = songs.findIndex(s => s.album === activeAlbum.album);
                 if(firstSongOfAlbumIndex !== -1) {
@@ -668,6 +723,7 @@ const App: React.FC = () => {
                 }
             }
             break;
+        }
         
         default:
             break;

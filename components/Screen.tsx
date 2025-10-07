@@ -21,7 +21,7 @@ interface ScreenProps {
   navigateTo: (screen: ScreenView) => void;
   goBack: () => void;
   onNext: () => void;
-  onSelect: () => void;
+  onSelect: (selectedId?: any) => void;
   songs: Song[];
   photos: Photo[];
   videos: Video[];
@@ -279,6 +279,7 @@ const Screen: React.FC<ScreenProps> = (props) => {
             appItems.push({ id: 'clear', name: '[Clear All Apps]', subtext: 'This action cannot be undone.' });
         }
         return <MenuList items={appItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
+      // Fix: Corrected typo from JME_RUNNER to J2ME_RUNNER
       case ScreenView.J2ME_RUNNER:
         return <J2MERunner app={props.runningApp} />;
       case ScreenView.BRICK_BREAKER:
@@ -327,6 +328,7 @@ const Screen: React.FC<ScreenProps> = (props) => {
         case ScreenView.THEMES: return "Themes";
         case ScreenView.GAMES: return "Games";
         case ScreenView.APPS: return "Apps";
+        // Fix: Corrected typo from JME_RUNNER to J2ME_RUNNER
         case ScreenView.J2ME_RUNNER: return props.runningApp?.name || "J2ME Runner";
         case ScreenView.BRICK_BREAKER: return "Brick Breaker";
         case ScreenView.SNAKE: return "Snake";
