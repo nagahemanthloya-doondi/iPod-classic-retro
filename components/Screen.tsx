@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { ScreenView, Song, Photo, Video, MenuItem, BatteryState, NowPlayingMedia, J2MEApp } from '../types';
+import React, { useState } from 'react';
+import { ScreenView, Song, Photo, Video, MenuItem, BatteryState, NowPlayingMedia, J2MEApp, Theme } from '../types';
 import StatusBar from './StatusBar';
 import MenuList, { CustomMenuItem } from './MenuList';
 import NowPlaying from './NowPlaying';
@@ -21,11 +21,13 @@ interface ScreenProps {
   navigateTo: (screen: ScreenView) => void;
   goBack: () => void;
   onNext: () => void;
+  onSelect: () => void;
   songs: Song[];
   photos: Photo[];
   videos: Video[];
   j2meApps: J2MEApp[];
   onAddYoutubeVideo: (video: Video) => void;
+  onAddIptvLink: (video: Video) => void;
   handleClearSongs: () => void;
   handleClearVideos: () => void;
   handleClearJ2meApps: () => void;
@@ -50,6 +52,8 @@ interface ScreenProps {
   snakeRef: React.RefObject<SnakeRef>;
   runningApp: J2MEApp | null;
   setRunningApp: (app: J2MEApp | null) => void;
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
 }
 
 
@@ -81,37 +85,98 @@ const getYouTubeThumbnail = (url: string) => {
     return videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : undefined;
 }
 
+const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => void;}> = ({ onAddVideo, goBack }) => {
+    const [iptvUrl, setIptvUrl] = useState('');
+    const [error, setError] = useState('');
+
+    const handleAddIptvLink = () => {
+        if (!iptvUrl) {
+            setError('Please enter a URL');
+            return;
+        }
+        
+        if (!iptvUrl.toLowerCase().includes('.m3u')) { // Simple check for m3u or m3u8
+            setError('Please enter a valid M3U or M3U8 URL');
+            return;
+        }
+
+        try {
+            // Use URL as name, or try to parse a name from it
+            const urlParts = iptvUrl.split('/');
+            const name = urlParts.find(part => part.toLowerCase().includes('.m3u')) || urlParts[urlParts.length - 1] || iptvUrl;
+
+            const newVideo: Video = {
+                id: `iptv-${iptvUrl}`,
+                name: name,
+                url: iptvUrl,
+                isYoutube: false,
+                isIPTV: true,
+            };
+            onAddVideo(newVideo);
+            setIptvUrl('');
+            setError('');
+            goBack();
+        } catch (err: any) {
+            console.error(err);
+            setError('An error occurred. Please check the URL.');
+        }
+    };
+
+    return (
+        <div className="flex-grow flex flex-col items-center justify-center relative">
+             <h2 className="bg-gradient-to-b from-gray-200 to-gray-300 text-black text-center font-bold py-1 border-b-2 border-gray-400 w-full flex-shrink-0 absolute top-0">Add IPTV Link</h2>
+            <div className="w-full px-4">
+                <input
+                    type="text"
+                    value={iptvUrl}
+                    onChange={(e) => setIptvUrl(e.target.value)}
+                    placeholder="Paste M3U/M3U8 URL here"
+                    className="w-full p-2 border border-gray-400 rounded text-sm text-black placeholder-gray-500"
+                    aria-label="IPTV URL Input"
+                />
+                <button 
+                    onClick={handleAddIptvLink} 
+                    className="mt-2 w-full bg-blue-500 text-white px-3 py-2 rounded text-sm font-bold hover:bg-blue-600 transition-colors"
+                >
+                    Add Stream
+                </button>
+                {error && <p className="text-red-500 text-xs mt-1 text-center">{error}</p>}
+            </div>
+        </div>
+    );
+};
+
 
 const Screen: React.FC<ScreenProps> = (props) => {
-  const { currentScreen, activeIndex, setActiveIndex, navigateTo, songs, photos, videos, j2meApps, playSong, playVideo, musicInputRef, photoInputRef, videoInputRef, j2meInputRef, handleNavigateToNowPlaying, handleClearSongs, handleClearVideos, handleClearJ2meApps, brickBreakerRef, snakeRef } = props;
+  const { currentScreen, activeIndex, setActiveIndex, navigateTo, onSelect, songs, photos, videos, j2meApps, playSong, playVideo, musicInputRef, photoInputRef, videoInputRef, j2meInputRef, handleNavigateToNowPlaying, handleClearSongs, handleClearVideos, handleClearJ2meApps, brickBreakerRef, snakeRef } = props;
 
   const mainMenu: MenuItem[] = [
     { id: ScreenView.MUSIC, name: 'Music' },
     { id: ScreenView.PHOTOS, name: 'Photos' },
     { id: ScreenView.VIDEOS, name: 'Videos' },
     { id: ScreenView.EXTRAS, name: 'Extras' },
+    { id: ScreenView.SETTINGS, name: 'Settings' },
     { id: ScreenView.SHUFFLE_PLAY, name: 'Shuffle Songs' },
     { id: ScreenView.NOW_PLAYING, name: 'Now Playing' },
   ];
 
   const musicMenu: MenuItem[] = [
     { id: ScreenView.COVER_FLOW, name: 'Cover Flow' },
-    { id: ScreenView.MUSIC, name: 'All Songs' }, // Re-using MUSIC to show song list
-    // Fix: Use ScreenView.ACTION for special menu items.
+    { id: ScreenView.MUSIC, name: 'All Songs' }, 
     { id: ScreenView.ACTION, name: 'Add Music' },
   ];
   
   const photosMenu: MenuItem[] = [
       { id: ScreenView.PHOTO_VIEWER, name: 'View Photos' },
-      // Fix: Use ScreenView.ACTION for special menu items.
       { id: ScreenView.ACTION, name: 'Add Photos' },
   ];
 
   const videosMenu: MenuItem[] = [
       { id: ScreenView.VIDEO_LIST, name: 'View Videos' },
-      // Fix: Use ScreenView.ACTION for special menu items.
+      { id: ScreenView.LIVE_TV, name: 'Live TV' },
       { id: ScreenView.ACTION, name: 'Add Videos' },
       { id: ScreenView.ADD_YOUTUBE_VIDEO, name: 'Add YouTube Link' },
+      { id: ScreenView.ADD_IPTV_LINK, name: 'Add IPTV Link' },
   ];
   
   const extrasMenu: MenuItem[] = [
@@ -119,26 +184,24 @@ const Screen: React.FC<ScreenProps> = (props) => {
       { id: ScreenView.APPS, name: 'Apps' },
   ];
 
+  const settingsMenu: MenuItem[] = [
+    { id: ScreenView.THEMES, name: 'Themes' },
+  ];
+
+  const themesMenu = [
+    { id: 'classic', name: 'Classic' },
+    { id: 'dark', name: 'Dark' },
+    { id: 'gold', name: 'Gold' },
+  ];
+
   const getScreenContent = () => {
     switch (currentScreen) {
       case ScreenView.MAIN_MENU:
-        return <SplitScreenView nowPlayingSong={props.nowPlayingSong}><MenuList items={mainMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
-          if (id === ScreenView.NOW_PLAYING) {
-            handleNavigateToNowPlaying();
-          } else {
-            navigateTo(id);
-          }
-        }} /></SplitScreenView>;
+        return <SplitScreenView nowPlayingSong={props.nowPlayingSong}><MenuList items={mainMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} /></SplitScreenView>;
       case ScreenView.MUSIC:
          if(props.navigationStack[props.navigationStack.length-2] === ScreenView.MAIN_MENU) {
-            return <SplitScreenView nowPlayingSong={props.nowPlayingSong}><MenuList items={musicMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
-                 // Fix: Compare with ScreenView.ACTION for consistency.
-                 if (id === ScreenView.ACTION) musicInputRef.current?.click();
-                 else if (id === ScreenView.MUSIC) navigateTo(99 as ScreenView); // special id for song list
-                 else navigateTo(id);
-            }} /></SplitScreenView>;
+            return <SplitScreenView nowPlayingSong={props.nowPlayingSong}><MenuList items={musicMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} /></SplitScreenView>;
         }
-        // Fallthrough for song list
       case 99 as ScreenView: // Song list
         const songItems: CustomMenuItem[] = songs.map((s, i) => ({ 
             id: i, 
@@ -149,48 +212,28 @@ const Screen: React.FC<ScreenProps> = (props) => {
         if (songs.length > 0) {
             songItems.push({ id: 'clear', name: '[Clear All Songs]', subtext: 'This action cannot be undone.' });
         }
-        return <MenuList items={songItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
-            if (id === 'clear') {
-                handleClearSongs();
-            } else {
-                playSong(id);
-            }
-        }} />;
+        return <MenuList items={songItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
       case ScreenView.PHOTOS:
-        return <MenuList items={photosMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
-            // Fix: Compare with ScreenView.ACTION for consistency.
-            if (id === ScreenView.ACTION) photoInputRef.current?.click();
-            else navigateTo(id);
-        }} />;
+        return <MenuList items={photosMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
       case ScreenView.PHOTO_VIEWER:
         if (photos.length === 0) return <div className="flex-grow flex items-center justify-center text-gray-500">No Photos</div>;
         return <div className="w-full h-full bg-black flex items-center justify-center">
             <img src={photos[activeIndex % photos.length].url} alt={photos[activeIndex % photos.length].name} className="max-w-full max-h-full object-contain" />
         </div>;
       case ScreenView.VIDEOS:
-        return <MenuList items={videosMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
-            // Fix: Compare with ScreenView.ACTION for consistency.
-            if (id === ScreenView.ACTION) videoInputRef.current?.click();
-            else navigateTo(id);
-        }} />;
+        return <MenuList items={videosMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
       case ScreenView.VIDEO_LIST:
         if (videos.length === 0) return <div className="flex-grow flex items-center justify-center text-gray-500">No Videos</div>;
         const videoItems = videos.map((v, i) => ({ 
             id: i, 
             name: v.name,
-            subtext: v.isYoutube ? 'YouTube' : 'Local File',
+            subtext: v.isYoutube ? 'YouTube' : v.isIPTV ? 'IPTV Stream' : 'Local File',
             thumbnail: v.isYoutube ? getYouTubeThumbnail(v.url) : undefined,
         }));
         if (videos.length > 0) {
             videoItems.push({ id: 'clear', name: '[Clear All Videos]', subtext: 'This action cannot be undone.' });
         }
-        return <MenuList items={videoItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
-            if (id === 'clear') {
-                handleClearVideos();
-            } else {
-                playVideo(id);
-            }
-        }} />;
+        return <MenuList items={videoItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
       case ScreenView.VIDEO_PLAYER:
         return <VideoPlayer 
             videos={props.videos} 
@@ -203,17 +246,31 @@ const Screen: React.FC<ScreenProps> = (props) => {
         />;
       case ScreenView.ADD_YOUTUBE_VIDEO:
         return <AddYoutubeVideo onAddVideo={props.onAddYoutubeVideo} goBack={props.goBack} />;
+      case ScreenView.ADD_IPTV_LINK:
+        return <AddIptvLink onAddVideo={props.onAddIptvLink} goBack={props.goBack} />;
+      case ScreenView.LIVE_TV:
+        const iptvStreams = videos.filter(v => v.isIPTV);
+        if (iptvStreams.length === 0) return <div className="flex-grow flex items-center justify-center text-gray-500">No IPTV Streams</div>;
+        const iptvItems: CustomMenuItem[] = iptvStreams.map((v, i) => ({ 
+            id: i, 
+            name: v.name,
+            subtext: 'IPTV Stream'
+        }));
+        if (iptvStreams.length > 0) {
+            iptvItems.push({ id: 'clear', name: '[Clear All Streams]', subtext: 'This action cannot be undone.' });
+        }
+        return <MenuList items={iptvItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
+      case ScreenView.SETTINGS:
+        return <MenuList items={settingsMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
+      case ScreenView.THEMES:
+        return <MenuList items={themesMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
       case ScreenView.EXTRAS:
-        return <MenuList items={extrasMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => navigateTo(id)} />;
+        return <MenuList items={extrasMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
       case ScreenView.GAMES:
         return <Games 
             activeIndex={activeIndex} 
             setActiveIndex={setActiveIndex as (index: number) => void} 
-            onSelect={(id) => {
-                if (id !== ScreenView.ACTION) {
-                    navigateTo(id);
-                }
-            }}
+            onSelect={onSelect}
         />;
       case ScreenView.APPS:
         const appItems: CustomMenuItem[] = [{ id: 'add', name: 'Add App (.jar)', subtext: 'Load a J2ME application or game' }];
@@ -221,17 +278,7 @@ const Screen: React.FC<ScreenProps> = (props) => {
         if (j2meApps.length > 0) {
             appItems.push({ id: 'clear', name: '[Clear All Apps]', subtext: 'This action cannot be undone.' });
         }
-        return <MenuList items={appItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
-            if (id === 'add') {
-                j2meInputRef.current?.click();
-            } else if (id === 'clear') {
-                handleClearJ2meApps();
-            } else {
-                const selectedApp = j2meApps[id];
-                props.setRunningApp(selectedApp);
-                navigateTo(ScreenView.J2ME_RUNNER);
-            }
-        }} />;
+        return <MenuList items={appItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
       case ScreenView.J2ME_RUNNER:
         return <J2MERunner app={props.runningApp} />;
       case ScreenView.BRICK_BREAKER:
@@ -239,7 +286,6 @@ const Screen: React.FC<ScreenProps> = (props) => {
       case ScreenView.SNAKE:
         return <Snake ref={snakeRef} goBack={props.goBack} />;
       case ScreenView.SHUFFLE_PLAY:
-        // This is handled in ClickWheel.tsx, just show a message
         return <div className="flex-grow flex items-center justify-center text-gray-500">Shuffling all songs...</div>;
       case ScreenView.NOW_PLAYING:
         return <NowPlaying {...props} />;
@@ -261,6 +307,7 @@ const Screen: React.FC<ScreenProps> = (props) => {
         case ScreenView.PHOTO_VIEWER: return photos.length > 0 ? `Photo ${activeIndex % photos.length + 1} of ${photos.length}` : "Photos";
         case ScreenView.VIDEOS: return "Videos";
         case ScreenView.VIDEO_LIST: return "All Videos";
+        case ScreenView.LIVE_TV: return "Live TV";
         case ScreenView.VIDEO_PLAYER: 
             const video = props.nowPlayingMedia?.type === 'video' ? videos[props.nowPlayingMedia.index] : null;
             if (!video) return "Videos";
@@ -276,6 +323,8 @@ const Screen: React.FC<ScreenProps> = (props) => {
             }
             return video.name;
         case ScreenView.EXTRAS: return "Extras";
+        case ScreenView.SETTINGS: return "Settings";
+        case ScreenView.THEMES: return "Themes";
         case ScreenView.GAMES: return "Games";
         case ScreenView.APPS: return "Apps";
         case ScreenView.J2ME_RUNNER: return props.runningApp?.name || "J2ME Runner";
@@ -288,13 +337,14 @@ const Screen: React.FC<ScreenProps> = (props) => {
             return `${songIndex + 1} of ${songs.length}`;
         case ScreenView.COVER_FLOW: return "Cover Flow";
         case ScreenView.ADD_YOUTUBE_VIDEO: return "Add YouTube";
+        case ScreenView.ADD_IPTV_LINK: return "Add IPTV";
         default: return "Menu";
     }
   };
 
 
   return (
-    <div className="bg-[#cdd3d8] w-full h-full flex flex-col overflow-hidden select-none">
+    <div className="w-full h-full flex flex-col overflow-hidden select-none" style={{ backgroundColor: 'var(--screen-bg)'}}>
       <StatusBar title={getTitleForScreen()} battery={props.battery} />
       <div className="flex-grow overflow-hidden flex flex-col">
         {getScreenContent()}

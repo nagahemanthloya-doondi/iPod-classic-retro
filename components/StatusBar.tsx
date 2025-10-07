@@ -8,7 +8,14 @@ interface StatusBarProps {
 
 const StatusBar: React.FC<StatusBarProps> = ({ title, battery }) => {
   return (
-    <div className="bg-gradient-to-b from-gray-300 to-gray-400 text-black font-bold text-sm px-2 py-0.5 flex justify-between items-center w-full flex-shrink-0 border-b-2 border-gray-500">
+    <div 
+        className="font-bold text-sm px-2 py-0.5 flex justify-between items-center w-full flex-shrink-0 border-b-2"
+        style={{
+            backgroundImage: 'var(--statusbar-bg-gradient)',
+            color: 'var(--statusbar-text-color)',
+            borderColor: 'var(--statusbar-border-color)',
+        }}
+    >
       <span className="w-1/3 text-left"></span> {/* Placeholder for left content */}
       <span className="w-1/3 text-center truncate">{title}</span>
       <div className="w-1/3 flex items-center justify-end">

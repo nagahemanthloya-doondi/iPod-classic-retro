@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Video, NowPlayingMedia } from '../types';
 
 interface VideoPlayerProps {
@@ -11,6 +11,12 @@ interface VideoPlayerProps {
   onNext: () => void;
 }
 
+declare global {
+    interface Window {
+        Hls: any;
+    }
+}
+
 const getYouTubeId = (url: string): string | null => {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
     const match = url.match(regExp);
@@ -20,6 +26,7 @@ const getYouTubeId = (url: string): string | null => {
 const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPlayingMedia, videoRef, setYtPlayer, setIsPlaying, onNext }) => {
     const activeVideoIndex = nowPlayingMedia?.type === 'video' ? nowPlayingMedia.index : -1;
     const activeVideo = activeVideoIndex !== -1 ? videos[activeVideoIndex] : null;
+    const hlsRef = useRef<any>(null);
     
     const videoId = activeVideo?.isYoutube ? getYouTubeId(activeVideo.url) : null;
 
@@ -57,7 +64,47 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
             };
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [videoId]); // Only re-create player when videoId changes
+    }, [videoId]);
+
+    useEffect(() => {
+        const videoElement = videoRef.current;
+        if (!videoElement || !activeVideo || activeVideo.isYoutube) {
+            if (hlsRef.current) {
+                hlsRef.current.destroy();
+                hlsRef.current = null;
+            }
+            return;
+        }
+
+        if (hlsRef.current) {
+            hlsRef.current.destroy();
+            hlsRef.current = null;
+        }
+
+        if (activeVideo.isIPTV) {
+            const { Hls } = window;
+            if (Hls && Hls.isSupported()) {
+                const hls = new Hls();
+                hlsRef.current = hls;
+                hls.loadSource(activeVideo.url);
+                hls.attachMedia(videoElement);
+            } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                videoElement.src = activeVideo.url;
+            } else {
+                console.error("HLS playback not supported.");
+            }
+        } else { // Local video
+            videoElement.src = activeVideo.url;
+        }
+        
+        return () => {
+            if (hlsRef.current) {
+                hlsRef.current.destroy();
+                hlsRef.current = null;
+            }
+        }
+
+    }, [activeVideo, videoRef]);
 
     if (!activeVideo) {
         return (
@@ -66,7 +113,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
                 <button onClick={() => videoInputRef.current?.click()} className="w-full bg-gray-200 text-black px-3 py-2 rounded text-sm font-bold hover:bg-gray-300 transition-colors">
                     Load from Files
                 </button>
-                <p className="mt-2 text-center text-xs">You can add a YouTube link from the previous menu.</p>
+                <p className="mt-2 text-center text-xs">You can add a YouTube or IPTV link from the previous menu.</p>
             </div>
         );
     }
@@ -76,7 +123,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
             {activeVideo.isYoutube ? (
                 <div id="youtube-player" className="w-full h-full"></div>
             ) : (
-                <video ref={videoRef} controls src={activeVideo.url} className="max-w-full max-h-full object-contain">
+                <video ref={videoRef} controls className="max-w-full max-h-full object-contain">
                     Your browser does not support the video tag.
                 </video>
             )}

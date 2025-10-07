@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import IPod from './components/IPod';
-import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia, MenuItem, J2MEApp } from './types';
+import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia, MenuItem, J2MEApp, Theme } from './types';
 import * as db from './lib/db';
 
 declare global {
@@ -73,6 +73,8 @@ const App: React.FC = () => {
   const [navigationStack, setNavigationStack] = useState<ScreenView[]>([ScreenView.MAIN_MENU]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isGamepadMode, setIsGamepadMode] = useState(false);
+  const [screenExtensionHeight, setScreenExtensionHeight] = useState(0);
+  const [theme, setTheme] = useState<Theme>('classic');
 
   const [songs, setSongs] = useState<Song[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -106,6 +108,18 @@ const App: React.FC = () => {
   ].includes(currentScreen);
 
   useEffect(() => {
+    const savedTheme = localStorage.getItem('ipod-theme') as Theme;
+    if (savedTheme) {
+        setTheme(savedTheme);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('ipod-theme', theme);
+    document.body.className = `flex items-stretch justify-center theme-${theme}`;
+  }, [theme]);
+
+  useEffect(() => {
     if (!isGameScreen && isGamepadMode) {
       setIsGamepadMode(false);
     }
@@ -127,12 +141,15 @@ const App: React.FC = () => {
 
       // Load local videos
       const storedVideos = await db.getAllMedia<{id: string, name: string, file: File}>('videos');
-      const loadedLocalVideos = storedVideos.map(v => ({ ...v, url: URL.createObjectURL(v.file), isYoutube: false }));
+      const loadedLocalVideos = storedVideos.map(v => ({ ...v, url: URL.createObjectURL(v.file), isYoutube: false, isIPTV: false }));
       
       // Load YouTube videos from localStorage
       const storedYTVideos = JSON.parse(localStorage.getItem('youtube_videos') || '[]');
       
-      setVideos([...loadedLocalVideos, ...storedYTVideos]);
+      // Load IPTV videos from localStorage
+      const storedIPTVideos = JSON.parse(localStorage.getItem('iptv_videos') || '[]');
+      
+      setVideos([...loadedLocalVideos, ...storedYTVideos, ...storedIPTVideos]);
       
       // Load J2ME apps
       const storedApps = await db.getAllMedia<{id: string, name: string, file: File}>('j2me_apps');
@@ -147,7 +164,7 @@ const App: React.FC = () => {
         songs.forEach(media => URL.revokeObjectURL(media.url));
         photos.forEach(media => URL.revokeObjectURL(media.url));
         videos.forEach(video => {
-            if (!video.isYoutube && video.url.startsWith('blob:')) {
+            if (!video.isYoutube && !video.isIPTV && video.url.startsWith('blob:')) {
                 URL.revokeObjectURL(video.url);
             }
         });
@@ -360,7 +377,7 @@ const App: React.FC = () => {
       } else if (type === 'video') {
           const videoData = { id, name: file.name, file };
           db.addMedia('videos', videoData);
-          const newVideo: Video = { ...videoData, url: URL.createObjectURL(file), isYoutube: false };
+          const newVideo: Video = { ...videoData, url: URL.createObjectURL(file), isYoutube: false, isIPTV: false };
           setVideos(prev => [...prev, newVideo]);
       } else if (type === 'j2me') {
           const appData = { id, name: file.name, file };
@@ -377,6 +394,13 @@ const App: React.FC = () => {
     localStorage.setItem('youtube_videos', JSON.stringify(updatedYTVideos));
     setVideos(prev => [...prev.filter(v => v.id !== video.id), video]);
   };
+  
+  const handleAddIptvLink = (video: Video) => {
+    const currentIPTVideos = JSON.parse(localStorage.getItem('iptv_videos') || '[]');
+    const updatedIPTVideos = [...currentIPTVideos.filter((v: Video) => v.id !== video.id), video];
+    localStorage.setItem('iptv_videos', JSON.stringify(updatedIPTVideos));
+    setVideos(prev => [...prev.filter(v => v.id !== video.id), video]);
+  };
 
   const handleClearSongs = async () => {
     await db.clearStore('songs');
@@ -388,8 +412,9 @@ const App: React.FC = () => {
   const handleClearVideos = async () => {
     await db.clearStore('videos');
     localStorage.removeItem('youtube_videos');
+    localStorage.removeItem('iptv_videos');
     videos.forEach(video => {
-        if (!video.isYoutube && video.url.startsWith('blob:')) {
+        if (!video.isYoutube && !video.isIPTV && video.url.startsWith('blob:')) {
             URL.revokeObjectURL(video.url);
         }
     });
@@ -462,6 +487,7 @@ const App: React.FC = () => {
         { id: ScreenView.PHOTOS, name: 'Photos' },
         { id: ScreenView.VIDEOS, name: 'Videos' },
         { id: ScreenView.EXTRAS, name: 'Extras' },
+        { id: ScreenView.SETTINGS, name: 'Settings' },
         { id: ScreenView.SHUFFLE_PLAY, name: 'Shuffle Songs' },
         { id: ScreenView.NOW_PLAYING, name: 'Now Playing' },
     ];
@@ -469,21 +495,20 @@ const App: React.FC = () => {
     const musicMenu: MenuItem[] = [
         { id: ScreenView.COVER_FLOW, name: 'Cover Flow' },
         { id: ScreenView.MUSIC, name: 'All Songs' }, 
-        // Fix: Use ScreenView.ACTION for special menu items.
         { id: ScreenView.ACTION, name: 'Add Music' },
     ];
     
     const photosMenu: MenuItem[] = [
         { id: ScreenView.PHOTO_VIEWER, name: 'View Photos' },
-        // Fix: Use ScreenView.ACTION for special menu items.
         { id: ScreenView.ACTION, name: 'Add Photos' },
     ];
 
     const videosMenu: MenuItem[] = [
         { id: ScreenView.VIDEO_LIST, name: 'View Videos' },
-        // Fix: Use ScreenView.ACTION for special menu items.
+        { id: ScreenView.LIVE_TV, name: 'Live TV' },
         { id: ScreenView.ACTION, name: 'Add Videos' },
         { id: ScreenView.ADD_YOUTUBE_VIDEO, name: 'Add YouTube Link' },
+        { id: ScreenView.ADD_IPTV_LINK, name: 'Add IPTV Link' },
     ];
 
     const extrasMenu: MenuItem[] = [
@@ -504,6 +529,10 @@ const App: React.FC = () => {
         { id: ScreenView.ACTION, name: 'Frogger' },
         { id: ScreenView.ACTION, name: 'Galaga' },
     ];
+    
+    const settingsMenu: MenuItem[] = [
+      { id: ScreenView.THEMES, name: 'Themes' },
+    ];
 
     switch (currentScreen) {
         case ScreenView.MAIN_MENU:
@@ -523,7 +552,6 @@ const App: React.FC = () => {
         case ScreenView.MUSIC:
               if(navigationStack[navigationStack.length-2] === ScreenView.MAIN_MENU) {
                 const selectedMusicMenuItem = musicMenu[activeIndex];
-                // Fix: Compare with ScreenView.ACTION to resolve type error.
                 if (selectedMusicMenuItem.id === ScreenView.ACTION) {
                     musicInputRef.current?.click();
                 } else if (selectedMusicMenuItem.id === ScreenView.MUSIC) {
@@ -544,7 +572,6 @@ const App: React.FC = () => {
 
         case ScreenView.PHOTOS:
             const selectedPhotosMenuItem = photosMenu[activeIndex];
-            // Fix: Compare with ScreenView.ACTION to resolve type error.
             if (selectedPhotosMenuItem.id === ScreenView.ACTION) {
                 photoInputRef.current?.click();
             } else {
@@ -554,12 +581,20 @@ const App: React.FC = () => {
 
         case ScreenView.VIDEOS:
             const selectedVideosMenuItem = videosMenu[activeIndex];
-            // Fix: Compare with ScreenView.ACTION to resolve type error.
             if (selectedVideosMenuItem.id === ScreenView.ACTION) {
                 videoInputRef.current?.click();
             } else {
                 navigateTo(selectedVideosMenuItem.id);
             }
+            break;
+        
+        case ScreenView.SETTINGS:
+            navigateTo(settingsMenu[activeIndex].id);
+            break;
+
+        case ScreenView.THEMES:
+            const themes: Theme[] = ['classic', 'dark', 'gold'];
+            setTheme(themes[activeIndex]);
             break;
 
         case ScreenView.EXTRAS:
@@ -599,6 +634,21 @@ const App: React.FC = () => {
                 handleClearVideos();
             } else if (videos[activeIndex]) {
                 playVideo(activeIndex);
+            }
+            break;
+        
+        case ScreenView.LIVE_TV:
+            const iptvVideos = videos.filter(v => v.isIPTV);
+            if (iptvVideos.length > 0 && activeIndex === iptvVideos.length) { // "Clear" button
+                const otherVideos = videos.filter(v => !v.isIPTV);
+                localStorage.removeItem('iptv_videos');
+                setVideos(otherVideos);
+                setActiveIndex(0);
+            } else if (iptvVideos[activeIndex]) {
+                const originalIndex = videos.findIndex(v => v.id === iptvVideos[activeIndex].id);
+                if (originalIndex !== -1) {
+                    playVideo(originalIndex);
+                }
             }
             break;
 
@@ -643,6 +693,7 @@ const App: React.FC = () => {
         videos={videos}
         j2meApps={j2meApps}
         onAddYoutubeVideo={handleAddYoutubeVideo}
+        onAddIptvLink={handleAddIptvLink}
         handleClearSongs={handleClearSongs}
         handleClearVideos={handleClearVideos}
         handleClearJ2meApps={handleClearJ2meApps}
@@ -669,12 +720,16 @@ const App: React.FC = () => {
         onGamepadInput={handleGamepadInput}
         runningApp={runningApp}
         setRunningApp={setRunningApp}
+        screenExtensionHeight={screenExtensionHeight}
+        setScreenExtensionHeight={setScreenExtensionHeight}
+        theme={theme}
+        setTheme={setTheme}
       />
       <audio ref={audioRef} />
       <input type="file" accept="audio/*" multiple ref={musicInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'music')} />
       <input type="file" accept="image/*" multiple ref={photoInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'photo')} />
       <input type="file" accept="video/*" multiple ref={videoInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'video')} />
-      <input type="file" accept=".jar" multiple ref={j2meInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'j2me')} />
+      <input type="file" accept="application/java-archive,.jar" multiple ref={j2meInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'j2me')} />
     </>
   );
 };

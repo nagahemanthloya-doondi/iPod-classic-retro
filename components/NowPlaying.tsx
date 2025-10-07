@@ -25,15 +25,15 @@ const NowPlaying: React.FC<NowPlayingProps> = ({ nowPlayingSong, isPlaying, prog
   const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
 
   return (
-    <div className="flex-grow flex flex-col p-2 bg-gradient-to-b from-gray-100 to-gray-300">
-        <p className="font-bold text-center text-md truncate">{nowPlayingSong.name}</p>
-        <p className="text-gray-600 text-center text-sm truncate">{nowPlayingSong.artist}</p>
-        <p className="text-gray-500 text-center text-xs truncate mb-2">{nowPlayingSong.album}</p>
+    <div className="flex-grow flex flex-col p-2" style={{ backgroundImage: 'var(--now-playing-bg-gradient)'}}>
+        <p className="font-bold text-center text-md truncate" style={{ color: 'var(--now-playing-text-primary)'}}>{nowPlayingSong.name}</p>
+        <p className="text-center text-sm truncate" style={{ color: 'var(--now-playing-text-secondary)'}}>{nowPlayingSong.artist}</p>
+        <p className="text-center text-xs truncate mb-2" style={{ color: 'var(--now-playing-text-tertiary)'}}>{nowPlayingSong.album}</p>
         
         <div className="w-full bg-gray-400 rounded-full h-1.5 my-2">
             <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${progressPercent}%` }}></div>
         </div>
-        <div className="flex justify-between text-xs font-semibold text-gray-700">
+        <div className="flex justify-between text-xs font-semibold" style={{ color: 'var(--now-playing-text-secondary)'}}>
             <span>{formatTime(progress)}</span>
             <span>-{formatTime(duration - progress)}</span>
         </div>

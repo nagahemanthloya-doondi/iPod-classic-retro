@@ -8,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.5/dist/jsmediatags.min.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <!-- Placeholder for J2ME Emulator Library -->
     <script src="https://unpkg.com/j2me.js/dist/j2me.js"></script>
   <script type="importmap">
@@ -21,98 +22,138 @@
 </script>
 <style>
   :root {
-    /* 
-      Define rem-based dimensions for both orientations to calculate a dynamic root font size.
-      This ensures the entire UI scales to fit the viewport while maintaining aspect ratio.
-    */
+    /* Dimensions */
     --ipod-w-portrait: 22.5;
     --ipod-h-portrait: 37.5;
-    
-    /* Landscape width = screen body (22.5rem) + gap (2rem) + wheel (15rem) */
     --ipod-w-landscape: 39.5; 
-    /* Landscape height = screen body height (approx 18.25rem) + some vertical padding */
-    --ipod-h-landscape: 21; 
+    --ipod-h-landscape: 18.25;
+
+    /* THEME: Classic */
+    --ipod-bg-gradient: linear-gradient(to bottom, #e5e7eb, #9ca3af);
+    --ipod-border-color: #6b7280;
+    --screen-bezel-bg: #4b5563;
+    --screen-bezel-border: #1f2937;
+    --screen-bg: #cdd3d8;
+    --statusbar-bg-gradient: linear-gradient(to bottom, #d1d5db, #9ca3af);
+    --statusbar-border-color: #6b7280;
+    --statusbar-text-color: black;
+    --menu-bg: white;
+    --menu-text-color: black;
+    --menu-subtext-color: #6b7280;
+    --menu-active-bg-gradient: linear-gradient(to bottom, #60a5fa, #2563eb);
+    --menu-active-text-color: white;
+    --menu-active-subtext-color: #d1d5db;
+    --menu-border-color: #e5e7eb;
+    --wheel-bg: #4b5563;
+    --wheel-icon-color: #9ca3af;
+    --center-button-bg: white;
+    --center-button-border: #4b5563;
+    --gamepad-shoulder-bg: #6b7280;
+    --gamepad-shoulder-active-bg: #4b5563;
+    --gamepad-dpad-icon-color: #9ca3af;
+    --gamepad-dpad-icon-active-color: white;
+    --now-playing-bg-gradient: linear-gradient(to bottom, #f3f4f6, #d1d5db);
+    --now-playing-text-primary: black;
+    --now-playing-text-secondary: #4b5563;
+    --now-playing-text-tertiary: #6b7280;
+  }
+  
+  .theme-dark {
+    --ipod-bg-gradient: linear-gradient(to bottom, #1a1a1a, #0d0d0d);
+    --ipod-border-color: #333;
+    --screen-bezel-bg: #000;
+    --screen-bezel-border: #222;
+    --wheel-bg: #c53030;
+    --wheel-icon-color: white;
+    --center-button-bg: #111;
+    --center-button-border: #c53030;
+    --gamepad-shoulder-bg: #4a5568;
+    --gamepad-shoulder-active-bg: #2d3748;
+    --gamepad-dpad-icon-color: #a0aec0;
+    --gamepad-dpad-icon-active-color: #e53e3e;
+  }
+
+  .theme-gold {
+    --ipod-bg-gradient: linear-gradient(to bottom, #fffbeb, #fde68a);
+    --ipod-border-color: #d97706;
+    --screen-bezel-bg: white;
+    --screen-bezel-border: #fef3c7;
+    --wheel-bg: white;
+    --wheel-icon-color: #f59e0b;
+    --center-button-bg: linear-gradient(to bottom, #fcd34d, #f59e0b);
+    --center-button-border: white;
+    --gamepad-shoulder-bg: #fbbf24;
+    --gamepad-shoulder-active-bg: #f59e0b;
+    --gamepad-dpad-icon-color: #fbbf24;
+    --gamepad-dpad-icon-active-color: #d97706;
   }
 
   html {
-    /* Default to portrait font size */
     font-size: min(calc(100vw / var(--ipod-w-portrait)), calc(100svh / var(--ipod-h-portrait)));
   }
 
   .ipod-container {
-    /* Portrait styles (iPod body) */
     width: 22.5rem;
     height: 100%;
-    background-image: linear-gradient(to bottom, #e5e7eb, #9ca3af); /* bg-gradient-to-b from-gray-200 to-gray-400 */
-    border-radius: 1.5rem; /* rounded-3xl */
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); /* shadow-2xl */
+    background-image: var(--ipod-bg-gradient);
+    border-radius: 1.5rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem; /* p-4 */
-    border: 2px solid #6b7280; /* border-2 border-gray-500 */
+    padding: 1rem;
+    border: 2px solid var(--ipod-border-color);
   }
 
   .ipod-body {
     width: 100%;
-    margin-bottom: 2rem; /* mb-8 */
+  }
+
+  .resizable-area {
+    cursor: default;
+    touch-action: none;
+    user-select: none;
   }
   
   @media (orientation: landscape) {
     html {
-      /* Switch to landscape font size */
       font-size: min(calc(100vw / var(--ipod-w-landscape)), calc(100svh / var(--ipod-h-landscape)));
     }
     
     .ipod-container {
-      /* Reset container to be a simple flex wrapper for landscape */
-      width: auto;
-      height: auto;
-      background-image: none;
-      border-radius: 0;
-      box-shadow: none;
-      border: none;
-      padding: 0;
-      /* Arrange children (screen-body and wheel) side-by-side */
+      width: var(--ipod-w-landscape)rem;
+      height: var(--ipod-h-landscape)rem;
       flex-direction: row;
       justify-content: center;
-      gap: 2rem; /* gap-8 */
+      gap: 2rem;
     }
 
     .ipod-body {
-      /* Re-apply iPod body styles to just the screen container */
-      width: 22.5rem;
-      height: auto;
-      background-image: linear-gradient(to bottom, #e5e7eb, #9ca3af);
-      border-radius: 1.5rem; /* rounded-3xl */
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 1rem; /* p-4 */
-      border: 2px solid #6b7280; /* border-2 border-gray-500 */
+      width: 20.5rem;
       margin-bottom: 0;
     }
   }
 
-  body {
-    /* 
-      Ensure the body takes up the full stable viewport height and respects
-      safe areas on devices with notches or dynamic islands. This prevents
-      the UI from jumping when browser chrome appears and ensures the iPod
-      is centered within the usable screen area.
-    */
-    height: 100vh; /* Fallback for older browsers */
-    height: 100svh;
-    /* Account for safe areas so the flex centering works correctly */
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-    /* The flexbox container needs to account for the padding, so we use box-sizing */
-    box-sizing: border-box;
+  @media (orientation: portrait) {
+    .resizable-area {
+      cursor: ns-resize;
+    }
   }
+
+  body {
+    height: 100vh;
+    height: 100svh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    box-sizing: border-box;
+    background-color: #f3f4f6;
+  }
+  .theme-dark body { background-color: #111827; }
+  .theme-gold body { background-color: #fffbeb; }
+
 </style>
 </head>
-  <body class="bg-gray-100 flex items-stretch justify-center">
+  <body class="flex items-stretch justify-center">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
