@@ -12,6 +12,11 @@ export enum ScreenView {
   VIDEO_LIST,
   PHOTO_VIEWER,
   ADD_YOUTUBE_VIDEO,
+  GAMES,
+  BRICK_BREAKER,
+  SNAKE,
+  APPS,
+  J2ME_RUNNER,
   // Fix: Add an ACTION member to handle special menu items without navigating.
   ACTION = -1,
 }
@@ -33,6 +38,8 @@ export interface Photo extends MediaFile {}
 export interface Video extends MediaFile {
   isYoutube: boolean;
 }
+
+export interface J2MEApp extends MediaFile {}
 
 export interface MenuItem {
   id: ScreenView;

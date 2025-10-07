@@ -1,12 +1,17 @@
 
 import React from 'react';
-import { ScreenView, Song, Photo, Video, MenuItem, BatteryState, NowPlayingMedia } from '../types';
+import { ScreenView, Song, Photo, Video, MenuItem, BatteryState, NowPlayingMedia, J2MEApp } from '../types';
 import StatusBar from './StatusBar';
 import MenuList, { CustomMenuItem } from './MenuList';
 import NowPlaying from './NowPlaying';
 import CoverFlow from './CoverFlow';
 import VideoPlayer from './VideoPlayer';
 import AddYoutubeVideo from './AddYoutubeVideo';
+import Games from './Games';
+import BrickBreaker from './games/BrickBreaker';
+import Snake from './games/Snake';
+import J2MERunner from './J2MERunner';
+import { BrickBreakerRef, SnakeRef } from '../App';
 import { MUSIC_ICON_SVG } from '../lib/constants';
 
 interface ScreenProps {
@@ -19,9 +24,11 @@ interface ScreenProps {
   songs: Song[];
   photos: Photo[];
   videos: Video[];
+  j2meApps: J2MEApp[];
   onAddYoutubeVideo: (video: Video) => void;
   handleClearSongs: () => void;
   handleClearVideos: () => void;
+  handleClearJ2meApps: () => void;
   playSong: (index: number) => void;
   playVideo: (index: number) => void;
   handleNavigateToNowPlaying: () => void;
@@ -35,9 +42,14 @@ interface ScreenProps {
   musicInputRef: React.RefObject<HTMLInputElement>;
   photoInputRef: React.RefObject<HTMLInputElement>;
   videoInputRef: React.RefObject<HTMLInputElement>;
+  j2meInputRef: React.RefObject<HTMLInputElement>;
   videoRef: React.RefObject<HTMLVideoElement>;
   setYtPlayer: (player: any) => void;
   battery: BatteryState;
+  brickBreakerRef: React.RefObject<BrickBreakerRef>;
+  snakeRef: React.RefObject<SnakeRef>;
+  runningApp: J2MEApp | null;
+  setRunningApp: (app: J2MEApp | null) => void;
 }
 
 
@@ -71,7 +83,7 @@ const getYouTubeThumbnail = (url: string) => {
 
 
 const Screen: React.FC<ScreenProps> = (props) => {
-  const { currentScreen, activeIndex, setActiveIndex, navigateTo, songs, photos, videos, playSong, playVideo, musicInputRef, photoInputRef, videoInputRef, handleNavigateToNowPlaying, handleClearSongs, handleClearVideos } = props;
+  const { currentScreen, activeIndex, setActiveIndex, navigateTo, songs, photos, videos, j2meApps, playSong, playVideo, musicInputRef, photoInputRef, videoInputRef, j2meInputRef, handleNavigateToNowPlaying, handleClearSongs, handleClearVideos, handleClearJ2meApps, brickBreakerRef, snakeRef } = props;
 
   const mainMenu: MenuItem[] = [
     { id: ScreenView.MUSIC, name: 'Music' },
@@ -100,6 +112,11 @@ const Screen: React.FC<ScreenProps> = (props) => {
       // Fix: Use ScreenView.ACTION for special menu items.
       { id: ScreenView.ACTION, name: 'Add Videos' },
       { id: ScreenView.ADD_YOUTUBE_VIDEO, name: 'Add YouTube Link' },
+  ];
+  
+  const extrasMenu: MenuItem[] = [
+      { id: ScreenView.GAMES, name: 'Games' },
+      { id: ScreenView.APPS, name: 'Apps' },
   ];
 
   const getScreenContent = () => {
@@ -187,7 +204,40 @@ const Screen: React.FC<ScreenProps> = (props) => {
       case ScreenView.ADD_YOUTUBE_VIDEO:
         return <AddYoutubeVideo onAddVideo={props.onAddYoutubeVideo} goBack={props.goBack} />;
       case ScreenView.EXTRAS:
-        return <div className="flex-grow flex items-center justify-center text-gray-500">Extras not implemented.</div>;
+        return <MenuList items={extrasMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => navigateTo(id)} />;
+      case ScreenView.GAMES:
+        return <Games 
+            activeIndex={activeIndex} 
+            setActiveIndex={setActiveIndex as (index: number) => void} 
+            onSelect={(id) => {
+                if (id !== ScreenView.ACTION) {
+                    navigateTo(id);
+                }
+            }}
+        />;
+      case ScreenView.APPS:
+        const appItems: CustomMenuItem[] = [{ id: 'add', name: 'Add App (.jar)', subtext: 'Load a J2ME application or game' }];
+        j2meApps.forEach((app, i) => appItems.push({ id: i, name: app.name, subtext: 'J2ME Application' }));
+        if (j2meApps.length > 0) {
+            appItems.push({ id: 'clear', name: '[Clear All Apps]', subtext: 'This action cannot be undone.' });
+        }
+        return <MenuList items={appItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={(id) => {
+            if (id === 'add') {
+                j2meInputRef.current?.click();
+            } else if (id === 'clear') {
+                handleClearJ2meApps();
+            } else {
+                const selectedApp = j2meApps[id];
+                props.setRunningApp(selectedApp);
+                navigateTo(ScreenView.J2ME_RUNNER);
+            }
+        }} />;
+      case ScreenView.J2ME_RUNNER:
+        return <J2MERunner app={props.runningApp} />;
+      case ScreenView.BRICK_BREAKER:
+        return <BrickBreaker ref={brickBreakerRef} goBack={props.goBack} />;
+      case ScreenView.SNAKE:
+        return <Snake ref={snakeRef} goBack={props.goBack} />;
       case ScreenView.SHUFFLE_PLAY:
         // This is handled in ClickWheel.tsx, just show a message
         return <div className="flex-grow flex items-center justify-center text-gray-500">Shuffling all songs...</div>;
@@ -226,6 +276,11 @@ const Screen: React.FC<ScreenProps> = (props) => {
             }
             return video.name;
         case ScreenView.EXTRAS: return "Extras";
+        case ScreenView.GAMES: return "Games";
+        case ScreenView.APPS: return "Apps";
+        case ScreenView.J2ME_RUNNER: return props.runningApp?.name || "J2ME Runner";
+        case ScreenView.BRICK_BREAKER: return "Brick Breaker";
+        case ScreenView.SNAKE: return "Snake";
         case ScreenView.NOW_PLAYING: 
             if (!props.nowPlayingSong) return "Now Playing";
             const songIndex = songs.findIndex(s => s.id === props.nowPlayingSong?.id);

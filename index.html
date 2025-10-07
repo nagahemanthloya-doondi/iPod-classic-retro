@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.5/dist/jsmediatags.min.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
+    <!-- Placeholder for J2ME Emulator Library -->
+    <script src="https://unpkg.com/j2me.js/dist/j2me.js"></script>
   <script type="importmap">
 {
   "imports": {
@@ -18,23 +20,82 @@
 }
 </script>
 <style>
-  html {
-    /*
-      Set the root font size based on the smaller of the viewport dimensions
-      to ensure the iPod fits on screen while maintaining its aspect ratio.
-      The iPod's dimensions are 22.5rem (width) and 37.5rem (height).
-      
-      - `calc(100vw / 22.5)` scales the font size based on the viewport width.
-      - `calc(100svh / 37.5)` scales the font size based on the stable small viewport height.
-      
-      `min()` selects the smaller of the two values, which prevents the iPod
-      from overflowing either horizontally or vertically.
-      
-      We use 100% of the viewport dimensions to maximize the iPod size.
-      Using `svh` instead of `vh` prevents layout shifts when browser UI appears/disappears.
+  :root {
+    /* 
+      Define rem-based dimensions for both orientations to calculate a dynamic root font size.
+      This ensures the entire UI scales to fit the viewport while maintaining aspect ratio.
     */
-    font-size: min(calc(100vw / 22.5), calc(100svh / 37.5));
+    --ipod-w-portrait: 22.5;
+    --ipod-h-portrait: 37.5;
+    
+    /* Landscape width = screen body (22.5rem) + gap (2rem) + wheel (15rem) */
+    --ipod-w-landscape: 39.5; 
+    /* Landscape height = screen body height (approx 18.25rem) + some vertical padding */
+    --ipod-h-landscape: 21; 
   }
+
+  html {
+    /* Default to portrait font size */
+    font-size: min(calc(100vw / var(--ipod-w-portrait)), calc(100svh / var(--ipod-h-portrait)));
+  }
+
+  .ipod-container {
+    /* Portrait styles (iPod body) */
+    width: 22.5rem;
+    height: 100%;
+    background-image: linear-gradient(to bottom, #e5e7eb, #9ca3af); /* bg-gradient-to-b from-gray-200 to-gray-400 */
+    border-radius: 1.5rem; /* rounded-3xl */
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); /* shadow-2xl */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem; /* p-4 */
+    border: 2px solid #6b7280; /* border-2 border-gray-500 */
+  }
+
+  .ipod-body {
+    width: 100%;
+    margin-bottom: 2rem; /* mb-8 */
+  }
+  
+  @media (orientation: landscape) {
+    html {
+      /* Switch to landscape font size */
+      font-size: min(calc(100vw / var(--ipod-w-landscape)), calc(100svh / var(--ipod-h-landscape)));
+    }
+    
+    .ipod-container {
+      /* Reset container to be a simple flex wrapper for landscape */
+      width: auto;
+      height: auto;
+      background-image: none;
+      border-radius: 0;
+      box-shadow: none;
+      border: none;
+      padding: 0;
+      /* Arrange children (screen-body and wheel) side-by-side */
+      flex-direction: row;
+      justify-content: center;
+      gap: 2rem; /* gap-8 */
+    }
+
+    .ipod-body {
+      /* Re-apply iPod body styles to just the screen container */
+      width: 22.5rem;
+      height: auto;
+      background-image: linear-gradient(to bottom, #e5e7eb, #9ca3af);
+      border-radius: 1.5rem; /* rounded-3xl */
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem; /* p-4 */
+      border: 2px solid #6b7280; /* border-2 border-gray-500 */
+      margin-bottom: 0;
+    }
+  }
+
   body {
     /* 
       Ensure the body takes up the full stable viewport height and respects

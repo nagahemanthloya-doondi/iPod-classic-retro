@@ -1,9 +1,9 @@
 
-
 import React from 'react';
 import Screen from './Screen';
 import ClickWheel from './ClickWheel';
-import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia } from '../types';
+import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia, J2MEApp } from '../types';
+import { BrickBreakerRef, SnakeRef } from '../App';
 
 interface IPodProps {
   currentScreen: ScreenView;
@@ -20,9 +20,11 @@ interface IPodProps {
   songs: Song[];
   photos: Photo[];
   videos: Video[];
+  j2meApps: J2MEApp[];
   onAddYoutubeVideo: (video: Video) => void;
   handleClearSongs: () => void;
   handleClearVideos: () => void;
+  handleClearJ2meApps: () => void;
   playSong: (index: number) => void;
   playVideo: (index: number) => void;
   handleNavigateToNowPlaying: () => void;
@@ -35,39 +37,43 @@ interface IPodProps {
   musicInputRef: React.RefObject<HTMLInputElement>;
   photoInputRef: React.RefObject<HTMLInputElement>;
   videoInputRef: React.RefObject<HTMLInputElement>;
+  j2meInputRef: React.RefObject<HTMLInputElement>;
   videoRef: React.RefObject<HTMLVideoElement>;
   setYtPlayer: (player: any) => void;
   battery: BatteryState;
+  brickBreakerRef: React.RefObject<BrickBreakerRef>;
+  snakeRef: React.RefObject<SnakeRef>;
+  isGamepadMode: boolean;
+  toggleGamepadMode: () => void;
+  onGamepadInput: (input: 'up' | 'down' | 'left' | 'right' | 'a' | 'b') => void;
+  runningApp: J2MEApp | null;
+  setRunningApp: (app: J2MEApp | null) => void;
 }
+
+// Reusable Screen component part to avoid duplicating the bezel/screen markup
+const ScreenComponent: React.FC<IPodProps> = (props) => (
+    <div className="w-full h-[16.25rem] bg-gray-700 rounded-md border-2 border-gray-800 flex items-center justify-center">
+        <div className="w-[20rem] h-[15rem] bg-[#cdd3d8] overflow-hidden flex flex-col">
+            <Screen {...props} />
+        </div>
+    </div>
+);
+
 
 const IPod: React.FC<IPodProps> = (props) => {
   return (
-    <div className="w-[22.5rem] h-full bg-gradient-to-b from-gray-200 to-gray-400 rounded-3xl shadow-2xl flex flex-col items-center justify-between p-4 border-2 border-gray-500">
-      {/* Screen Bezel */}
-      <div className="w-full h-[16.25rem] bg-gray-700 rounded-md border-2 border-gray-800 flex items-center justify-center mb-8">
-          {/* Screen Content */}
-          <div className="w-[20rem] h-[15rem] bg-[#cdd3d8] overflow-hidden flex flex-col">
-              <Screen {...props} />
-          </div>
+    // This outer div is for centering the iPod on the page.
+    <div className="w-full h-full flex items-center justify-center">
+      {/* 
+        This is the main iPod container. Its layout changes from portrait to landscape 
+        via the CSS in index.html, avoiding the need for two separate DOM structures.
+      */}
+      <div className="ipod-container">
+        <div className="ipod-body">
+            <ScreenComponent {...props} />
+        </div>
+        <ClickWheel {...props} onMenuClick={props.goBack} />
       </div>
-      
-      <ClickWheel 
-        onMenuClick={props.goBack}
-        onPlayPause={props.onPlayPause}
-        onNext={props.onNext}
-        onPrev={props.onPrev}
-        onSeek={props.onSeek}
-        onSelect={props.onSelect}
-        currentScreen={props.currentScreen}
-        navigationStack={props.navigationStack}
-        activeIndex={props.activeIndex}
-        setActiveIndex={props.setActiveIndex}
-        navigateTo={props.navigateTo}
-        songs={props.songs}
-        photos={props.photos}
-        videos={props.videos}
-        playSong={props.playSong}
-      />
     </div>
   );
 };

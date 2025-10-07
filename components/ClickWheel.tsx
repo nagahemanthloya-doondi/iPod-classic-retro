@@ -1,6 +1,7 @@
 
 import React, { useRef, useCallback, useEffect } from 'react';
-import { ScreenView, Song, Photo, Video } from '../types';
+import { ScreenView, Song, Photo, Video, J2MEApp } from '../types';
+import { BrickBreakerRef, SnakeRef } from '../App';
 
 interface ClickWheelProps {
   onMenuClick: () => void;
@@ -8,7 +9,7 @@ interface ClickWheelProps {
   onNext: () => void;
   onPrev: () => void;
   onSeek: (direction: 'forward' | 'backward') => void;
-  onSelect: () => void; // Passed but selection logic is in Screen
+  onSelect: () => void;
   currentScreen: ScreenView;
   navigationStack: ScreenView[];
   activeIndex: number;
@@ -17,7 +18,13 @@ interface ClickWheelProps {
   songs: Song[];
   photos: Photo[];
   videos: Video[];
+  j2meApps: J2MEApp[];
   playSong: (index: number) => void;
+  brickBreakerRef: React.RefObject<BrickBreakerRef>;
+  snakeRef: React.RefObject<SnakeRef>;
+  isGamepadMode: boolean;
+  toggleGamepadMode: () => void;
+  onGamepadInput: (input: 'up' | 'down' | 'left' | 'right' | 'a' | 'b') => void;
 }
 
 const useWheel = (
@@ -97,9 +104,10 @@ const useWheel = (
 };
 
 
-const ClickWheel: React.FC<ClickWheelProps> = ({ onMenuClick, onPlayPause, onNext, onPrev, onSeek, onSelect, currentScreen, navigationStack, activeIndex, setActiveIndex, navigateTo, songs, photos, videos, playSong }) => {
+const ClickWheel: React.FC<ClickWheelProps> = ({ onMenuClick, onPlayPause, onNext, onPrev, onSeek, onSelect, currentScreen, navigationStack, activeIndex, setActiveIndex, navigateTo, songs, photos, videos, j2meApps, playSong, brickBreakerRef, snakeRef, isGamepadMode, toggleGamepadMode, onGamepadInput }) => {
   const wheelRef = useRef<HTMLDivElement>(null);
   const accumulatedAngle = useRef(0);
+  const lastClickTime = useRef(0);
   
   const handleRotate = useCallback((angleDelta: number) => {
     accumulatedAngle.current += angleDelta;
@@ -109,6 +117,16 @@ const ClickWheel: React.FC<ClickWheelProps> = ({ onMenuClick, onPlayPause, onNex
     
     const direction = accumulatedAngle.current > 0 ? 1 : -1;
     accumulatedAngle.current = 0; // Reset after action
+
+    if (currentScreen === ScreenView.BRICK_BREAKER) {
+      brickBreakerRef.current?.movePaddle(direction > 0 ? 'right' : 'left');
+      return;
+    }
+
+    if (currentScreen === ScreenView.SNAKE) {
+        snakeRef.current?.turn(direction > 0 ? 'right' : 'left');
+        return;
+    }
 
     if (currentScreen === ScreenView.NOW_PLAYING || currentScreen === ScreenView.VIDEO_PLAYER) {
         onSeek(direction > 0 ? 'forward' : 'backward');
@@ -123,6 +141,11 @@ const ClickWheel: React.FC<ClickWheelProps> = ({ onMenuClick, onPlayPause, onNex
             case ScreenView.PHOTOS: return 2;
             case ScreenView.PHOTO_VIEWER: return photos.length;
             case ScreenView.VIDEOS: return 3;
+            case ScreenView.EXTRAS: return 2;
+            case ScreenView.GAMES: return 11;
+            case ScreenView.APPS:
+                if (j2meApps.length === 0) return 1; // "Add" only
+                return j2meApps.length + 2; // "Add", apps, "Clear"
             case ScreenView.VIDEO_LIST: return videos.length > 0 ? videos.length + 1 : videos.length;
             case ScreenView.COVER_FLOW:
               const albumMap = new Map();
@@ -140,10 +163,58 @@ const ClickWheel: React.FC<ClickWheelProps> = ({ onMenuClick, onPlayPause, onNex
           setActiveIndex(prev => (prev + direction + listLength) % listLength);
       }
     }
-  }, [currentScreen, onSeek, setActiveIndex, songs, photos, videos, navigationStack]);
+  }, [currentScreen, onSeek, setActiveIndex, songs, photos, videos, j2meApps, navigationStack, brickBreakerRef, snakeRef]);
 
   useWheel(wheelRef, handleRotate);
   
+  const handleCenterClick = () => {
+    const isGameScreen = [
+        ScreenView.BRICK_BREAKER,
+        ScreenView.SNAKE,
+    ].includes(currentScreen);
+
+    if (isGameScreen) {
+        const now = Date.now();
+        if (now - lastClickTime.current < 300) { // Double-click threshold
+            toggleGamepadMode();
+            lastClickTime.current = 0; // Reset after double click
+        } else {
+            onSelect(); // Single click
+            lastClickTime.current = now;
+        }
+    } else {
+        onSelect(); // Default behavior
+    }
+  };
+
+  if (isGamepadMode) {
+    return (
+        <div className="w-[15rem] h-[15rem] rounded-full bg-gray-700 flex items-center justify-center relative select-none p-4">
+            {/* D-Pad */}
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 grid grid-cols-3 grid-rows-3 w-28 h-28 text-gray-700 font-bold text-lg">
+                <div />
+                <button aria-label="Up" onClick={() => onGamepadInput('up')} className="bg-white rounded-t active:bg-gray-300 col-start-2 flex items-center justify-center">▲</button>
+                <div />
+                <button aria-label="Left" onClick={() => onGamepadInput('left')} className="bg-white rounded-l active:bg-gray-300 flex items-center justify-center">◀</button>
+                <div className="bg-white flex items-center justify-center"></div>
+                <button aria-label="Right" onClick={() => onGamepadInput('right')} className="bg-white rounded-r active:bg-gray-300 flex items-center justify-center">▶</button>
+                <div />
+                <button aria-label="Down" onClick={() => onGamepadInput('down')} className="bg-white rounded-b active:bg-gray-300 col-start-2 flex items-center justify-center">▼</button>
+                <div />
+            </div>
+            
+            {/* Center button for toggling back */}
+            <div id="center-button" className="w-[4rem] h-[4rem] bg-white rounded-full border-4 border-gray-700 cursor-pointer" onClick={handleCenterClick}></div>
+
+            {/* Action Buttons */}
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-3">
+                 <button aria-label="A button" onClick={() => onGamepadInput('a')} className="w-12 h-12 bg-white rounded-full text-gray-700 font-bold text-xl active:bg-gray-300">A</button>
+                 <button aria-label="B button" onClick={() => onGamepadInput('b')} className="w-12 h-12 bg-white rounded-full text-gray-700 font-bold text-xl active:bg-gray-300">B</button>
+            </div>
+        </div>
+    );
+  }
+
   return (
     <div ref={wheelRef} className="w-[15rem] h-[15rem] rounded-full bg-gray-700 flex items-center justify-center relative select-none cursor-grab active:cursor-grabbing" style={{ touchAction: 'none' }}>
       <div className="absolute top-[1.5rem] text-gray-400 font-bold tracking-widest text-lg cursor-pointer" onClick={onMenuClick}>MENU</div>
@@ -156,7 +227,7 @@ const ClickWheel: React.FC<ClickWheelProps> = ({ onMenuClick, onPlayPause, onNex
       <div className="absolute bottom-[1.5rem] text-gray-400 cursor-pointer" onClick={onPlayPause}>
         <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
       </div>
-      <div id="center-button" className="w-[6.25rem] h-[6.25rem] bg-white rounded-full border-4 border-gray-700 cursor-pointer" onClick={onSelect}></div>
+      <div id="center-button" className="w-[6.25rem] h-[6.25rem] bg-white rounded-full border-4 border-gray-700 cursor-pointer" onClick={handleCenterClick}></div>
     </div>
   );
 };

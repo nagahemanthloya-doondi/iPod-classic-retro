@@ -1,7 +1,7 @@
 
 const DB_NAME = 'iPodDB';
 const DB_VERSION = 1;
-const STORES = ['songs', 'videos', 'photos'];
+const STORES = ['songs', 'videos', 'photos', 'j2me_apps'];
 
 let db: IDBDatabase;
 

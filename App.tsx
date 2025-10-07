@@ -1,10 +1,7 @@
 
-
-
-
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import IPod from './components/IPod';
-import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia, MenuItem } from './types';
+import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia, MenuItem, J2MEApp } from './types';
 import * as db from './lib/db';
 
 declare global {
@@ -17,6 +14,18 @@ declare global {
     getBattery: () => Promise<any>;
   }
 }
+
+export interface BrickBreakerRef {
+  movePaddle: (direction: 'left' | 'right') => void;
+  startGame: () => void;
+}
+
+export interface SnakeRef {
+  turn: (direction: 'left' | 'right') => void;
+  startGame: () => void;
+  setDirection: (direction: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT') => void;
+}
+
 
 const useBattery = (): BatteryState => {
   const [batteryState, setBatteryState] = useState<BatteryState>({
@@ -63,27 +72,44 @@ const useBattery = (): BatteryState => {
 const App: React.FC = () => {
   const [navigationStack, setNavigationStack] = useState<ScreenView[]>([ScreenView.MAIN_MENU]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [isGamepadMode, setIsGamepadMode] = useState(false);
 
   const [songs, setSongs] = useState<Song[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [j2meApps, setJ2meApps] = useState<J2MEApp[]>([]);
   
   const [nowPlayingMedia, setNowPlayingMedia] = useState<NowPlayingMedia | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [runningApp, setRunningApp] = useState<J2MEApp | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const ytPlayerRef = useRef<any>(null);
   const progressIntervalRef = useRef<number | null>(null);
+  const brickBreakerRef = useRef<BrickBreakerRef>(null);
+  const snakeRef = useRef<SnakeRef>(null);
 
   const musicInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const j2meInputRef = useRef<HTMLInputElement>(null);
 
   const battery = useBattery();
   const currentScreen = navigationStack[navigationStack.length - 1];
+
+  const isGameScreen = [
+    ScreenView.BRICK_BREAKER,
+    ScreenView.SNAKE,
+  ].includes(currentScreen);
+
+  useEffect(() => {
+    if (!isGameScreen && isGamepadMode) {
+      setIsGamepadMode(false);
+    }
+  }, [currentScreen, isGameScreen, isGamepadMode]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -107,6 +133,11 @@ const App: React.FC = () => {
       const storedYTVideos = JSON.parse(localStorage.getItem('youtube_videos') || '[]');
       
       setVideos([...loadedLocalVideos, ...storedYTVideos]);
+      
+      // Load J2ME apps
+      const storedApps = await db.getAllMedia<{id: string, name: string, file: File}>('j2me_apps');
+      const loadedApps = storedApps.map(a => ({ ...a, url: URL.createObjectURL(a.file) }));
+      setJ2meApps(loadedApps);
     };
 
     loadData();
@@ -120,6 +151,7 @@ const App: React.FC = () => {
                 URL.revokeObjectURL(video.url);
             }
         });
+        j2meApps.forEach(app => URL.revokeObjectURL(app.url));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -290,7 +322,7 @@ const App: React.FC = () => {
   }, [nowPlayingMedia]);
 
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'music' | 'photo' | 'video') => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'music' | 'photo' | 'video' | 'j2me') => {
     const files = e.target.files;
     if (!files) return;
 
@@ -330,6 +362,11 @@ const App: React.FC = () => {
           db.addMedia('videos', videoData);
           const newVideo: Video = { ...videoData, url: URL.createObjectURL(file), isYoutube: false };
           setVideos(prev => [...prev, newVideo]);
+      } else if (type === 'j2me') {
+          const appData = { id, name: file.name, file };
+          db.addMedia('j2me_apps', appData);
+          const newApp: J2MEApp = { ...appData, url: URL.createObjectURL(file) };
+          setJ2meApps(prev => [...prev, newApp]);
       }
     });
   };
@@ -360,6 +397,13 @@ const App: React.FC = () => {
     setActiveIndex(0);
   };
 
+  const handleClearJ2meApps = async () => {
+    await db.clearStore('j2me_apps');
+    j2meApps.forEach(app => URL.revokeObjectURL(app.url));
+    setJ2meApps([]);
+    setActiveIndex(0);
+  };
+
   const handleSeek = (direction: 'forward' | 'backward') => {
     if (!nowPlayingMedia) return;
     const seekAmount = 5; // 5 seconds
@@ -379,6 +423,37 @@ const App: React.FC = () => {
 
   const setYtPlayer = (player: any) => {
     ytPlayerRef.current = player;
+  };
+
+  const toggleGamepadMode = () => {
+    if (isGameScreen) {
+      setIsGamepadMode(prev => !prev);
+    }
+  };
+
+  const handleGamepadInput = (input: 'up' | 'down' | 'left' | 'right' | 'a' | 'b') => {
+    switch (currentScreen) {
+        case ScreenView.BRICK_BREAKER:
+            if (input === 'left' || input === 'right') {
+                brickBreakerRef.current?.movePaddle(input);
+            } else if (input === 'a') {
+                brickBreakerRef.current?.startGame();
+            }
+            break;
+        case ScreenView.SNAKE:
+            if (input === 'a') {
+                snakeRef.current?.startGame();
+            } else if (input === 'up') {
+                snakeRef.current?.setDirection('UP');
+            } else if (input === 'down') {
+                snakeRef.current?.setDirection('DOWN');
+            } else if (input === 'left') {
+                snakeRef.current?.setDirection('LEFT');
+            } else if (input === 'right') {
+                snakeRef.current?.setDirection('RIGHT');
+            }
+            break;
+    }
   };
 
   const handleSelect = () => {
@@ -409,6 +484,25 @@ const App: React.FC = () => {
         // Fix: Use ScreenView.ACTION for special menu items.
         { id: ScreenView.ACTION, name: 'Add Videos' },
         { id: ScreenView.ADD_YOUTUBE_VIDEO, name: 'Add YouTube Link' },
+    ];
+
+    const extrasMenu: MenuItem[] = [
+      { id: ScreenView.GAMES, name: 'Games' },
+      { id: ScreenView.APPS, name: 'Apps' },
+    ];
+
+    const gamesMenu: MenuItem[] = [
+        { id: ScreenView.BRICK_BREAKER, name: 'Brick Breaker' },
+        { id: ScreenView.SNAKE, name: 'Snake' },
+        { id: ScreenView.ACTION, name: 'Solitaire' },
+        { id: ScreenView.ACTION, name: 'Minesweeper' },
+        { id: ScreenView.ACTION, name: 'Pac-Man' },
+        { id: ScreenView.ACTION, name: 'Tetris' },
+        { id: ScreenView.ACTION, name: 'Pong' },
+        { id: ScreenView.ACTION, name: 'Space Invaders' },
+        { id: ScreenView.ACTION, name: 'Asteroids' },
+        { id: ScreenView.ACTION, name: 'Frogger' },
+        { id: ScreenView.ACTION, name: 'Galaga' },
     ];
 
     switch (currentScreen) {
@@ -468,6 +562,38 @@ const App: React.FC = () => {
             }
             break;
 
+        case ScreenView.EXTRAS:
+            navigateTo(extrasMenu[activeIndex].id);
+            break;
+
+        case ScreenView.GAMES:
+            const selectedGame = gamesMenu[activeIndex];
+            if (selectedGame.id !== ScreenView.ACTION) {
+                navigateTo(selectedGame.id);
+            }
+            break;
+
+        case ScreenView.APPS:
+            const totalApps = j2meApps.length;
+            if (activeIndex === 0) { // 'Add App'
+                j2meInputRef.current?.click();
+            } else if (totalApps > 0 && activeIndex === totalApps + 1) { // 'Clear'
+                handleClearJ2meApps();
+            } else if (activeIndex > 0 && activeIndex <= totalApps) {
+                const selectedApp = j2meApps[activeIndex - 1];
+                setRunningApp(selectedApp);
+                navigateTo(ScreenView.J2ME_RUNNER);
+            }
+            break;
+
+        case ScreenView.BRICK_BREAKER:
+            brickBreakerRef.current?.startGame();
+            break;
+
+        case ScreenView.SNAKE:
+            snakeRef.current?.startGame();
+            break;
+
         case ScreenView.VIDEO_LIST:
             if (videos.length > 0 && activeIndex === videos.length) { // "Clear" button
                 handleClearVideos();
@@ -515,9 +641,11 @@ const App: React.FC = () => {
         songs={songs}
         photos={photos}
         videos={videos}
+        j2meApps={j2meApps}
         onAddYoutubeVideo={handleAddYoutubeVideo}
         handleClearSongs={handleClearSongs}
         handleClearVideos={handleClearVideos}
+        handleClearJ2meApps={handleClearJ2meApps}
         playSong={playSong}
         playVideo={playVideo}
         handleNavigateToNowPlaying={handleNavigateToNowPlaying}
@@ -530,14 +658,23 @@ const App: React.FC = () => {
         musicInputRef={musicInputRef}
         photoInputRef={photoInputRef}
         videoInputRef={videoInputRef}
+        j2meInputRef={j2meInputRef}
         videoRef={videoRef}
         setYtPlayer={setYtPlayer}
         battery={battery}
+        brickBreakerRef={brickBreakerRef}
+        snakeRef={snakeRef}
+        isGamepadMode={isGamepadMode}
+        toggleGamepadMode={toggleGamepadMode}
+        onGamepadInput={handleGamepadInput}
+        runningApp={runningApp}
+        setRunningApp={setRunningApp}
       />
       <audio ref={audioRef} />
       <input type="file" accept="audio/*" multiple ref={musicInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'music')} />
       <input type="file" accept="image/*" multiple ref={photoInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'photo')} />
       <input type="file" accept="video/*" multiple ref={videoInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'video')} />
+      <input type="file" accept=".jar" multiple ref={j2meInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'j2me')} />
     </>
   );
 };
