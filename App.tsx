@@ -201,16 +201,22 @@ const App: React.FC = () => {
     setActiveIndex(index);
     setNowPlayingMedia({ type: 'video', index });
     const video = videos[index];
-    if (videoRef.current && !video.isYoutube) {
-      videoRef.current.src = video.url;
-    }
+
     if (ytPlayerRef.current && ytPlayerRef.current.destroy) {
         ytPlayerRef.current.destroy();
     }
     ytPlayerRef.current = null;
-    setIsPlaying(true);
+    
+    // For IPTV, VideoPlayer will manage starting playback.
+    // For other types, we start immediately.
+    if (video.isIPTV) {
+        setIsPlaying(false);
+    } else {
+        setIsPlaying(true);
+    }
+    
     navigateTo(ScreenView.VIDEO_PLAYER);
-  }
+  };
 
   const handleNavigateToNowPlaying = () => {
     if (!nowPlayingMedia) {
@@ -274,11 +280,21 @@ const App: React.FC = () => {
       const mediaElement = mediaRef.current;
       if (!mediaElement) return;
 
-      if (isPlaying) {
-        mediaElement.play().catch(e => console.error("Error playing media:", e));
-      } else {
-        mediaElement.pause();
-      }
+      const controlPlayback = async () => {
+        try {
+          if (isPlaying) {
+            await mediaElement.play();
+          } else {
+            mediaElement.pause();
+          }
+        } catch (error: any) {
+          if (error.name !== 'AbortError') {
+            console.error("Error playing media:", error);
+          }
+        }
+      };
+      
+      controlPlayback();
     }
   }, [isPlaying, nowPlayingMedia, videos]);
 
@@ -691,14 +707,25 @@ const App: React.FC = () => {
         
         case ScreenView.LIVE_TV: {
             const iptvVideos = videos.filter(v => v.isIPTV);
-            const indexToUse = selectedId ?? activeIndex;
-            if (selectedId === 'clear' || (selectedId === undefined && indexToUse === iptvVideos.length)) {
-                 const otherVideos = videos.filter(v => !v.isIPTV);
+
+            let effectiveId: any;
+            if (selectedId !== undefined) {
+                effectiveId = selectedId;
+            } else {
+                const menuItems = [
+                    ...iptvVideos, 
+                    ...(iptvVideos.length > 0 ? [{ id: 'clear' }] : [])
+                ];
+                effectiveId = menuItems[activeIndex]?.id;
+            }
+
+            if (effectiveId === 'clear') {
+                const otherVideos = videos.filter(v => !v.isIPTV);
                 localStorage.removeItem('iptv_videos');
                 setVideos(otherVideos);
                 setActiveIndex(0);
-            } else if (iptvVideos[indexToUse]) {
-                const originalIndex = videos.findIndex(v => v.id === iptvVideos[indexToUse].id);
+            } else if (effectiveId) {
+                const originalIndex = videos.findIndex(v => v.id === effectiveId);
                 if (originalIndex !== -1) {
                     playVideo(originalIndex);
                 }

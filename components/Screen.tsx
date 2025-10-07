@@ -85,13 +85,12 @@ const getYouTubeThumbnail = (url: string) => {
 }
 
 const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => void;}> = ({ onAddVideo, goBack }) => {
-    const [channelName, setChannelName] = useState('');
     const [iptvUrl, setIptvUrl] = useState('');
     const [error, setError] = useState('');
 
     const handleAddIptvLink = () => {
-        if (!channelName || !iptvUrl) {
-            setError('Please enter a channel name and URL');
+        if (!iptvUrl) {
+            setError('Please enter a URL');
             return;
         }
         
@@ -101,15 +100,29 @@ const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => v
         }
 
         try {
+            let name = 'IPTV Stream';
+            try {
+                // Attempt to generate a readable name from the last path segment of the URL
+                const urlPath = iptvUrl.split('?')[0];
+                const lastSegment = urlPath.substring(urlPath.lastIndexOf('/') + 1);
+                if (lastSegment) {
+                    name = decodeURIComponent(lastSegment);
+                }
+            } catch(e) {
+                console.warn('Could not decode URL part for name', e);
+                // Fallback if decoding fails
+                const urlPath = iptvUrl.split('?')[0];
+                name = urlPath.substring(urlPath.lastIndexOf('/') + 1) || 'IPTV Stream';
+            }
+
             const newVideo: Video = {
-                id: `iptv-${iptvUrl}`,
-                name: channelName,
+                id: `iptv-${Date.now()}-${iptvUrl}`,
+                name: name,
                 url: iptvUrl,
                 isYoutube: false,
                 isIPTV: true,
             };
             onAddVideo(newVideo);
-            setChannelName('');
             setIptvUrl('');
             setError('');
             goBack();
@@ -123,14 +136,6 @@ const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => v
         <div className="flex-grow flex flex-col items-center justify-center relative">
              <h2 className="bg-gradient-to-b from-gray-200 to-gray-300 text-black text-center font-bold py-1 border-b-2 border-gray-400 w-full flex-shrink-0 absolute top-0">Add IPTV Link</h2>
             <div className="w-full px-4">
-                <input
-                    type="text"
-                    value={channelName}
-                    onChange={(e) => setChannelName(e.target.value)}
-                    placeholder="Enter Channel Name"
-                    className="w-full p-2 border border-gray-400 rounded text-sm text-black placeholder-gray-500 mb-2"
-                    aria-label="Channel Name Input"
-                />
                 <input
                     type="text"
                     value={iptvUrl}
@@ -256,8 +261,8 @@ const Screen: React.FC<ScreenProps> = (props) => {
       case ScreenView.LIVE_TV:
         const iptvStreams = videos.filter(v => v.isIPTV);
         if (iptvStreams.length === 0) return <div className="flex-grow flex items-center justify-center text-gray-500">No IPTV Streams</div>;
-        const iptvItems: CustomMenuItem[] = iptvStreams.map((v, i) => ({ 
-            id: i, 
+        const iptvItems: CustomMenuItem[] = iptvStreams.map((v) => ({ 
+            id: v.id, 
             name: v.name,
             subtext: 'IPTV Stream'
         }));

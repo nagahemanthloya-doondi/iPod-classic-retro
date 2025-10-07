@@ -81,18 +81,59 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
             hlsRef.current = null;
         }
 
+        let nativeHlsCanPlayListener: (() => void) | null = null;
+
         if (activeVideo.isIPTV) {
-            const PROXY_URL = 'https://api.allorigins.win/raw?url=';
+            // Using a more reliable CORS proxy for streaming content. URL is encoded to handle special characters.
+            const PROXY_URL = 'https://corsproxy.io/?';
             const streamUrl = `${PROXY_URL}${encodeURIComponent(activeVideo.url)}`;
             const { Hls } = window;
 
             if (Hls && Hls.isSupported()) {
-                const hls = new Hls();
+                // More robust HLS configuration for better error tolerance with unstable streams
+                const hlsConfig = {
+                    manifestLoadingTimeOut: 45000,
+                    levelLoadingTimeOut: 45000,
+                    fragLoadingTimeOut: 60000,
+                    manifestLoadingMaxRetry: 10,
+                    levelLoadingMaxRetry: 10,
+                    fragLoadingMaxRetry: 10,
+                    manifestLoadingRetryDelay: 2000,
+                    levelLoadingRetryDelay: 2000,
+                    fragLoadingRetryDelay: 2000,
+                };
+                const hls = new Hls(hlsConfig);
                 hlsRef.current = hls;
                 hls.loadSource(streamUrl);
                 hls.attachMedia(videoElement);
+                hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+                    videoElement.play().catch(e => console.error("Autoplay failed for HLS.js stream:", e));
+                });
+                hls.on(window.Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        console.error('HLS.js fatal error:', data.type, data.details);
+                        switch (data.type) {
+                            case window.Hls.ErrorTypes.MEDIA_ERROR:
+                                console.warn('HLS.js: media error encountered, trying to recover...');
+                                hls.recoverMediaError();
+                                break;
+                            case window.Hls.ErrorTypes.NETWORK_ERROR:
+                                console.warn('HLS.js: network error encountered, trying to recover...');
+                                hls.startLoad();
+                                break;
+                            default:
+                                console.error('HLS.js: unrecoverable error, destroying instance.');
+                                hls.destroy();
+                                break;
+                        }
+                    }
+                });
             } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
                 videoElement.src = streamUrl;
+                nativeHlsCanPlayListener = () => {
+                    videoElement.play().catch(e => console.error("Autoplay failed for native HLS stream:", e));
+                };
+                videoElement.addEventListener('canplay', nativeHlsCanPlayListener);
             } else {
                 console.error("HLS playback not supported.");
             }
@@ -105,9 +146,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
                 hlsRef.current.destroy();
                 hlsRef.current = null;
             }
+             if (nativeHlsCanPlayListener && videoElement) {
+                videoElement.removeEventListener('canplay', nativeHlsCanPlayListener);
+            }
         }
 
-    }, [activeVideo, videoRef]);
+    }, [activeVideo, videoRef, setIsPlaying, onNext]);
 
     if (!activeVideo) {
         return (
