@@ -13,6 +13,7 @@ export enum ScreenView {
   PHOTO_VIEWER,
   ADD_YOUTUBE_VIDEO,
   ADD_IPTV_LINK,
+  ADD_ONLINE_VIDEO,
   LIVE_TV,
   GAMES,
   BRICK_BREAKER,
@@ -44,6 +45,7 @@ export interface Photo extends MediaFile {}
 export interface Video extends MediaFile {
   isYoutube: boolean;
   isIPTV: boolean;
+  isOnlineVideo: boolean;
 }
 
 export interface J2MEApp extends MediaFile {}

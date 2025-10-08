@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { ScreenView, Song, Photo, Video, MenuItem, BatteryState, NowPlayingMedia, J2MEApp, Theme } from '../types';
 import StatusBar from './StatusBar';
@@ -27,6 +28,7 @@ interface ScreenProps {
   j2meApps: J2MEApp[];
   onAddYoutubeVideo: (video: Video) => void;
   onAddIptvLink: (video: Video) => void;
+  onAddOnlineVideo: (video: Video) => void;
   handleClearSongs: () => void;
   handleClearVideos: () => void;
   handleClearJ2meApps: () => void;
@@ -86,6 +88,7 @@ const getYouTubeThumbnail = (url: string) => {
 
 const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => void;}> = ({ onAddVideo, goBack }) => {
     const [iptvUrl, setIptvUrl] = useState('');
+    const [channelName, setChannelName] = useState('');
     const [error, setError] = useState('');
 
     const handleAddIptvLink = () => {
@@ -93,26 +96,33 @@ const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => v
             setError('Please enter a URL');
             return;
         }
-        
-        if (!iptvUrl.toLowerCase().includes('.m3u')) { // Simple check for m3u or m3u8
-            setError('Please enter a valid M3U or M3U8 URL');
+
+        try {
+            // Test if it is a valid URL format
+            new URL(iptvUrl);
+        } catch (_) {
+            setError('Please enter a valid URL');
             return;
         }
 
         try {
+            const urlPath = iptvUrl.split('?')[0];
             let name = 'IPTV Stream';
-            try {
-                // Attempt to generate a readable name from the last path segment of the URL
-                const urlPath = iptvUrl.split('?')[0];
-                const lastSegment = urlPath.substring(urlPath.lastIndexOf('/') + 1);
-                if (lastSegment) {
-                    name = decodeURIComponent(lastSegment);
+            if (channelName.trim()) {
+                name = channelName.trim();
+            } else {
+                try {
+                    const decodedUrlPath = decodeURIComponent(urlPath);
+                    const lastSegment = decodedUrlPath.substring(decodedUrlPath.lastIndexOf('/') + 1);
+                    if (lastSegment) {
+                        // Remove extension for a cleaner name
+                        name = lastSegment.replace(/\.(m3u8?)$/i, '');
+                    }
+                } catch(e) {
+                    console.warn('Could not decode URL part for name', e);
+                    const lastSegment = urlPath.substring(urlPath.lastIndexOf('/') + 1);
+                    name = lastSegment.replace(/\.(m3u8?)$/i, '') || 'IPTV Stream';
                 }
-            } catch(e) {
-                console.warn('Could not decode URL part for name', e);
-                // Fallback if decoding fails
-                const urlPath = iptvUrl.split('?')[0];
-                name = urlPath.substring(urlPath.lastIndexOf('/') + 1) || 'IPTV Stream';
             }
 
             const newVideo: Video = {
@@ -121,9 +131,11 @@ const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => v
                 url: iptvUrl,
                 isYoutube: false,
                 isIPTV: true,
+                isOnlineVideo: false,
             };
             onAddVideo(newVideo);
             setIptvUrl('');
+            setChannelName('');
             setError('');
             goBack();
         } catch (err: any) {
@@ -138,6 +150,14 @@ const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => v
             <div className="w-full px-4">
                 <input
                     type="text"
+                    value={channelName}
+                    onChange={(e) => setChannelName(e.target.value)}
+                    placeholder="Channel Name (optional)"
+                    className="w-full p-2 border border-gray-400 rounded text-sm text-black placeholder-gray-500 mb-2"
+                    aria-label="Channel Name Input"
+                />
+                <input
+                    type="text"
                     value={iptvUrl}
                     onChange={(e) => setIptvUrl(e.target.value)}
                     placeholder="Paste M3U/M3U8 URL here"
@@ -150,6 +170,74 @@ const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => v
                 >
                     Add Stream
                 </button>
+                {error && <p className="text-red-500 text-xs mt-1 text-center">{error}</p>}
+            </div>
+        </div>
+    );
+};
+
+const AddOnlineVideo: React.FC<{onAddVideo: (video: Video) => void; goBack: () => void;}> = ({ onAddVideo, goBack }) => {
+    const [videoUrl, setVideoUrl] = useState('');
+    const [videoName, setVideoName] = useState('');
+    const [error, setError] = useState('');
+
+    const handleAddVideo = () => {
+        if (!videoUrl) {
+            setError('Please enter a video URL');
+            return;
+        }
+
+        try {
+            // Test if it is a valid URL format
+            new URL(videoUrl);
+        } catch (_) {
+            setError('Please enter a valid URL');
+            return;
+        }
+
+        try {
+            const name = videoName.trim() || videoUrl.substring(videoUrl.lastIndexOf('/') + 1) || 'Online Video';
+
+            const newVideo: Video = {
+                id: `online-${Date.now()}-${videoUrl}`,
+                name: name,
+                url: videoUrl,
+                isYoutube: false,
+                isIPTV: false,
+                isOnlineVideo: true,
+            };
+            onAddVideo(newVideo);
+            setVideoUrl('');
+            setVideoName('');
+            setError('');
+            goBack();
+        } catch (err: any) {
+            console.error(err);
+            setError('An error occurred. Please check the URL.');
+        }
+    };
+
+    return (
+        <div className="flex-grow flex flex-col items-center justify-center relative">
+             <h2 className="bg-gradient-to-b from-gray-200 to-gray-300 text-black text-center font-bold py-1 border-b-2 border-gray-400 w-full flex-shrink-0 absolute top-0">Add Online Video</h2>
+            <div className="w-full px-4">
+                <input
+                    type="text"
+                    value={videoName}
+                    onChange={(e) => setVideoName(e.target.value)}
+                    placeholder="Video Name (optional)"
+                    className="w-full p-2 border border-gray-400 rounded text-sm text-black placeholder-gray-500 mb-2"
+                    aria-label="Video Name Input"
+                />
+                <input
+                    type="text"
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    placeholder="Paste Video URL here"
+                    className="w-full p-2 border border-gray-400 rounded text-sm text-black placeholder-gray-500"
+                    aria-label="Online Video URL Input"
+                />
+                <button onClick={handleAddVideo} className="mt-2 w-full bg-blue-500 text-white px-3 py-2 rounded text-sm font-bold hover:bg-blue-600 transition-colors">Add Video</button>
                 {error && <p className="text-red-500 text-xs mt-1 text-center">{error}</p>}
             </div>
         </div>
@@ -187,6 +275,7 @@ const Screen: React.FC<ScreenProps> = (props) => {
       { id: ScreenView.ACTION, name: 'Add Videos' },
       { id: ScreenView.ADD_YOUTUBE_VIDEO, name: 'Add YouTube Link' },
       { id: ScreenView.ADD_IPTV_LINK, name: 'Add IPTV Link' },
+      { id: ScreenView.ADD_ONLINE_VIDEO, name: 'Add Online Video' },
   ];
   
   const extrasMenu: MenuItem[] = [
@@ -237,7 +326,7 @@ const Screen: React.FC<ScreenProps> = (props) => {
         const videoItems = videos.map((v, i) => ({ 
             id: i, 
             name: v.name,
-            subtext: v.isYoutube ? 'YouTube' : v.isIPTV ? 'IPTV Stream' : 'Local File',
+            subtext: v.isYoutube ? 'YouTube' : v.isIPTV ? 'IPTV Stream' : v.isOnlineVideo ? 'Online Video' : 'Local File',
             thumbnail: v.isYoutube ? getYouTubeThumbnail(v.url) : undefined,
         }));
         if (videos.length > 0) {
@@ -258,6 +347,8 @@ const Screen: React.FC<ScreenProps> = (props) => {
         return <AddYoutubeVideo onAddVideo={props.onAddYoutubeVideo} goBack={props.goBack} />;
       case ScreenView.ADD_IPTV_LINK:
         return <AddIptvLink onAddVideo={props.onAddIptvLink} goBack={props.goBack} />;
+      case ScreenView.ADD_ONLINE_VIDEO:
+        return <AddOnlineVideo onAddVideo={props.onAddOnlineVideo} goBack={props.goBack} />;
       case ScreenView.LIVE_TV:
         const iptvStreams = videos.filter(v => v.isIPTV);
         if (iptvStreams.length === 0) return <div className="flex-grow flex items-center justify-center text-gray-500">No IPTV Streams</div>;
@@ -310,57 +401,35 @@ const Screen: React.FC<ScreenProps> = (props) => {
   const getTitleForScreen = () => {
     switch(currentScreen) {
         case ScreenView.MAIN_MENU: return "Menu";
-        case ScreenView.MUSIC: 
-            if(props.navigationStack.at(-2) === ScreenView.MAIN_MENU) return "Music";
-            return "All Songs";
-        case 99 as ScreenView: return "All Songs";
+        case ScreenView.MUSIC: return "Music";
         case ScreenView.PHOTOS: return "Photos";
-        case ScreenView.PHOTO_VIEWER: return photos.length > 0 ? `Photo ${activeIndex % photos.length + 1} of ${photos.length}` : "Photos";
+        case ScreenView.PHOTO_VIEWER: return "Photo Viewer";
         case ScreenView.VIDEOS: return "Videos";
         case ScreenView.VIDEO_LIST: return "All Videos";
-        case ScreenView.LIVE_TV: return "Live TV";
-        case ScreenView.VIDEO_PLAYER: 
-            const video = props.nowPlayingMedia?.type === 'video' ? videos[props.nowPlayingMedia.index] : null;
-            if (!video) return "Videos";
-
-            if (video.isYoutube) {
-                const videoId = getYouTubeId(video.url);
-                const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
-                return (
-                    <a href={watchUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                        {video.name}
-                    </a>
-                )
-            }
-            return video.name;
+        case ScreenView.VIDEO_PLAYER: return props.nowPlayingMedia?.type === 'video' ? props.videos[props.nowPlayingMedia.index]?.name : 'Video Player';
         case ScreenView.EXTRAS: return "Extras";
         case ScreenView.SETTINGS: return "Settings";
         case ScreenView.THEMES: return "Themes";
+        case ScreenView.NOW_PLAYING: return "Now Playing";
+        case ScreenView.COVER_FLOW: return "Cover Flow";
         case ScreenView.GAMES: return "Games";
-        case ScreenView.APPS: return "Apps";
-        // Fix: Corrected typo from JME_RUNNER to J2ME_RUNNER
-        case ScreenView.J2ME_RUNNER: return props.runningApp?.name || "J2ME Runner";
         case ScreenView.BRICK_BREAKER: return "Brick Breaker";
         case ScreenView.SNAKE: return "Snake";
-        case ScreenView.NOW_PLAYING: 
-            if (!props.nowPlayingSong) return "Now Playing";
-            const songIndex = songs.findIndex(s => s.id === props.nowPlayingSong?.id);
-            if (songIndex === -1) return "Now Playing";
-            return `${songIndex + 1} of ${songs.length}`;
-        case ScreenView.COVER_FLOW: return "Cover Flow";
+        case ScreenView.APPS: return "Apps";
+        case ScreenView.J2ME_RUNNER: return props.runningApp?.name || "J2ME Runner";
         case ScreenView.ADD_YOUTUBE_VIDEO: return "Add YouTube";
         case ScreenView.ADD_IPTV_LINK: return "Add IPTV";
-        default: return "Menu";
+        case ScreenView.ADD_ONLINE_VIDEO: return "Add Online Video";
+        case ScreenView.LIVE_TV: return "Live TV";
+        case 99 as ScreenView: return "All Songs";
+        default: return "iPod";
     }
-  };
-
+  }
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden select-none" style={{ backgroundColor: 'var(--screen-bg)'}}>
+    <div className="flex-grow flex flex-col overflow-hidden">
       <StatusBar title={getTitleForScreen()} battery={props.battery} />
-      <div className="flex-grow overflow-hidden flex flex-col">
-        {getScreenContent()}
-      </div>
+      {getScreenContent()}
     </div>
   );
 };

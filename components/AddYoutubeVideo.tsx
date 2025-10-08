@@ -47,6 +47,8 @@ const AddYoutubeVideo: React.FC<AddYoutubeVideoProps> = ({ onAddVideo, goBack })
                     url: `https://www.youtube.com/embed/${videoId}`,
                     isYoutube: true,
                     isIPTV: false,
+                    // Fix: Added missing isOnlineVideo property to satisfy the Video interface.
+                    isOnlineVideo: false,
                 };
                 onAddVideo(newVideo);
                 setYoutubeUrl('');

@@ -141,7 +141,7 @@ const App: React.FC = () => {
 
       // Load local videos
       const storedVideos = await db.getAllMedia<{id: string, name: string, file: File}>('videos');
-      const loadedLocalVideos = storedVideos.map(v => ({ ...v, url: URL.createObjectURL(v.file), isYoutube: false, isIPTV: false }));
+      const loadedLocalVideos = storedVideos.map(v => ({ ...v, url: URL.createObjectURL(v.file), isYoutube: false, isIPTV: false, isOnlineVideo: false }));
       
       // Load YouTube videos from localStorage
       const storedYTVideos = JSON.parse(localStorage.getItem('youtube_videos') || '[]');
@@ -149,7 +149,10 @@ const App: React.FC = () => {
       // Load IPTV videos from localStorage
       const storedIPTVideos = JSON.parse(localStorage.getItem('iptv_videos') || '[]');
       
-      setVideos([...loadedLocalVideos, ...storedYTVideos, ...storedIPTVideos]);
+      // Load Online videos from localStorage
+      const storedOnlineVideos = JSON.parse(localStorage.getItem('online_videos') || '[]');
+
+      setVideos([...loadedLocalVideos, ...storedYTVideos, ...storedIPTVideos, ...storedOnlineVideos]);
       
       // Load J2ME apps
       const storedApps = await db.getAllMedia<{id: string, name: string, file: File}>('j2me_apps');
@@ -164,7 +167,7 @@ const App: React.FC = () => {
         songs.forEach(media => URL.revokeObjectURL(media.url));
         photos.forEach(media => URL.revokeObjectURL(media.url));
         videos.forEach(video => {
-            if (!video.isYoutube && !video.isIPTV && video.url.startsWith('blob:')) {
+            if (!video.isYoutube && !video.isIPTV && !video.isOnlineVideo && video.url.startsWith('blob:')) {
                 URL.revokeObjectURL(video.url);
             }
         });
@@ -393,7 +396,7 @@ const App: React.FC = () => {
       } else if (type === 'video') {
           const videoData = { id, name: file.name, file };
           db.addMedia('videos', videoData);
-          const newVideo: Video = { ...videoData, url: URL.createObjectURL(file), isYoutube: false, isIPTV: false };
+          const newVideo: Video = { ...videoData, url: URL.createObjectURL(file), isYoutube: false, isIPTV: false, isOnlineVideo: false };
           setVideos(prev => [...prev, newVideo]);
       } else if (type === 'j2me') {
           const appData = { id, name: file.name, file };
@@ -418,6 +421,13 @@ const App: React.FC = () => {
     setVideos(prev => [...prev.filter(v => v.id !== video.id), video]);
   };
 
+  const handleAddOnlineVideo = (video: Video) => {
+    const currentOnlineVideos = JSON.parse(localStorage.getItem('online_videos') || '[]');
+    const updatedOnlineVideos = [...currentOnlineVideos.filter((v: Video) => v.id !== video.id), video];
+    localStorage.setItem('online_videos', JSON.stringify(updatedOnlineVideos));
+    setVideos(prev => [...prev.filter(v => v.id !== video.id), video]);
+  };
+
   const handleClearSongs = async () => {
     await db.clearStore('songs');
     songs.forEach(song => URL.revokeObjectURL(song.url));
@@ -429,8 +439,9 @@ const App: React.FC = () => {
     await db.clearStore('videos');
     localStorage.removeItem('youtube_videos');
     localStorage.removeItem('iptv_videos');
+    localStorage.removeItem('online_videos');
     videos.forEach(video => {
-        if (!video.isYoutube && !video.isIPTV && video.url.startsWith('blob:')) {
+        if (!video.isYoutube && !video.isIPTV && !video.isOnlineVideo && video.url.startsWith('blob:')) {
             URL.revokeObjectURL(video.url);
         }
     });
@@ -525,6 +536,7 @@ const App: React.FC = () => {
         { id: ScreenView.ACTION, name: 'Add Videos' },
         { id: ScreenView.ADD_YOUTUBE_VIDEO, name: 'Add YouTube Link' },
         { id: ScreenView.ADD_IPTV_LINK, name: 'Add IPTV Link' },
+        { id: ScreenView.ADD_ONLINE_VIDEO, name: 'Add Online Video' },
     ];
 
     const extrasMenu: MenuItem[] = [
@@ -777,6 +789,7 @@ const App: React.FC = () => {
         j2meApps={j2meApps}
         onAddYoutubeVideo={handleAddYoutubeVideo}
         onAddIptvLink={handleAddIptvLink}
+        onAddOnlineVideo={handleAddOnlineVideo}
         handleClearSongs={handleClearSongs}
         handleClearVideos={handleClearVideos}
         handleClearJ2meApps={handleClearJ2meApps}

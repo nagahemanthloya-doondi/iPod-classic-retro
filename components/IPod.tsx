@@ -23,6 +23,7 @@ interface IPodProps {
   j2meApps: J2MEApp[];
   onAddYoutubeVideo: (video: Video) => void;
   onAddIptvLink: (video: Video) => void;
+  onAddOnlineVideo: (video: Video) => void;
   handleClearSongs: () => void;
   handleClearVideos: () => void;
   handleClearJ2meApps: () => void;
