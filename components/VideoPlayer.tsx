@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { Video, NowPlayingMedia } from '../types';
 
@@ -35,6 +34,18 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
     
     const videoId = activeVideo?.isYoutube ? getYouTubeId(activeVideo.url) : null;
 
+    // By using refs, we ensure that the latest callbacks are used without re-triggering the effects.
+    const setIsPlayingRef = useRef(setIsPlaying);
+    const onNextRef = useRef(onNext);
+
+    useEffect(() => {
+        setIsPlayingRef.current = setIsPlaying;
+    }, [setIsPlaying]);
+
+    useEffect(() => {
+        onNextRef.current = onNext;
+    }, [onNext]);
+
     useEffect(() => {
         if (activeVideo?.isYoutube && videoId && window.YT) {
             const player = new window.YT.Player('youtube-player', {
@@ -53,12 +64,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
                     },
                     'onStateChange': (event) => {
                         if (event.data === window.YT.PlayerState.PLAYING) {
-                            setIsPlaying(true);
+                            setIsPlayingRef.current(true);
                         } else if (event.data === window.YT.PlayerState.PAUSED) {
-                            setIsPlaying(false);
+                            setIsPlayingRef.current(false);
                         } else if (event.data === window.YT.PlayerState.ENDED) {
-                            setIsPlaying(false);
-                            onNext();
+                            setIsPlayingRef.current(false);
+                            onNextRef.current();
                         }
                     }
                 }
@@ -68,8 +79,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
                 // Player destruction is handled in App.tsx before navigating to a new video
             };
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [videoId]);
+    }, [videoId, setYtPlayer]);
 
     useEffect(() => {
         const videoElement = videoRef.current;
@@ -106,13 +116,25 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
                 });
             }, 20000); // 20s timeout
 
-            const PROXY_URL = 'https://corsproxy.io/?';
-            const streamUrl = `${PROXY_URL}${encodeURIComponent(activeVideo.url)}`;
+            const streamUrl = activeVideo.url;
             const { Hls } = window;
             const isHlsStream = activeVideo.url.toLowerCase().includes('.m3u8') || activeVideo.isIPTV;
             
             if (isHlsStream) {
-                if (Hls && Hls.isSupported()) {
+                if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                    videoElement.src = streamUrl;
+                    nativeHlsCanPlayListener = () => {
+                        videoElement.play().catch(e => console.error("Autoplay failed for native HLS stream:", e));
+                    };
+                    nativeHlsPlayingListener = () => setStreamState('playing');
+                    nativeHlsErrorListener = () => {
+                        setErrorMessage('The browser could not play this stream.');
+                        setStreamState('error');
+                    };
+                    videoElement.addEventListener('canplay', nativeHlsCanPlayListener);
+                    videoElement.addEventListener('playing', nativeHlsPlayingListener);
+                    videoElement.addEventListener('error', nativeHlsErrorListener);
+                } else if (Hls && Hls.isSupported()) {
                     const hls = new Hls({
                         manifestLoadingTimeOut: 45000,
                         levelLoadingTimeOut: 45000,
@@ -142,19 +164,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
                             hls.destroy();
                         }
                     });
-                } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-                    videoElement.src = streamUrl;
-                    nativeHlsCanPlayListener = () => {
-                        videoElement.play().catch(e => console.error("Autoplay failed for native HLS stream:", e));
-                    };
-                    nativeHlsPlayingListener = () => setStreamState('playing');
-                    nativeHlsErrorListener = () => {
-                        setErrorMessage('The browser could not play this stream.');
-                        setStreamState('error');
-                    };
-                    videoElement.addEventListener('canplay', nativeHlsCanPlayListener);
-                    videoElement.addEventListener('playing', nativeHlsPlayingListener);
-                    videoElement.addEventListener('error', nativeHlsErrorListener);
                 } else {
                     setErrorMessage("HLS playback is not supported by your browser.");
                     setStreamState('error');
@@ -192,10 +201,16 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
                 if (onlineCanPlayListener) videoElement.removeEventListener('canplay', onlineCanPlayListener);
                 if (onlinePlayingListener) videoElement.removeEventListener('playing', onlinePlayingListener);
                 if (onlineErrorListener) videoElement.removeEventListener('error', onlineErrorListener);
+                // Stop the video and reset src to prevent media fetching in the background
+                if (!videoElement.paused) {
+                    videoElement.pause();
+                }
+                videoElement.removeAttribute('src');
+                videoElement.load();
             }
         }
 
-    }, [activeVideo, videoRef, setIsPlaying, onNext]);
+    }, [activeVideo, videoRef]);
 
     if (!activeVideo) {
         return (
