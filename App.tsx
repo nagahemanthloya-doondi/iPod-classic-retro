@@ -1,14 +1,16 @@
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import IPod from './components/IPod';
-import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia, MenuItem, J2MEApp, Theme } from './types';
+import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia, MenuItem, J2MEApp, Theme, FmChannel } from './types';
 import * as db from './lib/db';
+import { CustomMenuItem } from './components/MenuList';
 
 declare global {
   interface Window {
     jsmediatags: any;
     YT: any;
     onYouTubeIframeAPIReady: () => void;
+    Hls: any;
   }
   interface Navigator {
     getBattery: () => Promise<any>;
@@ -24,6 +26,11 @@ export interface SnakeRef {
   turn: (direction: 'left' | 'right') => void;
   startGame: () => void;
   setDirection: (direction: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT') => void;
+}
+
+export interface CameraRef {
+  capture: () => void;
+  switchCamera: () => void;
 }
 
 
@@ -79,7 +86,9 @@ const App: React.FC = () => {
   const [songs, setSongs] = useState<Song[]>([]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [iptvLinks, setIptvLinks] = useState<Video[]>([]);
   const [j2meApps, setJ2meApps] = useState<J2MEApp[]>([]);
+  const [fmChannels, setFmChannels] = useState<FmChannel[]>([]);
   
   const [nowPlayingMedia, setNowPlayingMedia] = useState<NowPlayingMedia | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -88,11 +97,13 @@ const App: React.FC = () => {
   const [runningApp, setRunningApp] = useState<J2MEApp | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
+  const hlsAudioRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const ytPlayerRef = useRef<any>(null);
   const progressIntervalRef = useRef<number | null>(null);
   const brickBreakerRef = useRef<BrickBreakerRef>(null);
   const snakeRef = useRef<SnakeRef>(null);
+  const cameraRef = useRef<CameraRef>(null);
 
   const musicInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -101,6 +112,8 @@ const App: React.FC = () => {
 
   const battery = useBattery();
   const currentScreen = navigationStack[navigationStack.length - 1];
+  
+  const allVideos = useMemo(() => [...videos, ...iptvLinks], [videos, iptvLinks]);
 
   const isGameScreen = [
     ScreenView.BRICK_BREAKER,
@@ -145,14 +158,19 @@ const App: React.FC = () => {
       
       // Load YouTube videos from localStorage
       const storedYTVideos = JSON.parse(localStorage.getItem('youtube_videos') || '[]');
-      
-      // Load IPTV videos from localStorage
-      const storedIPTVideos = JSON.parse(localStorage.getItem('iptv_videos') || '[]');
-      
+            
       // Load Online videos from localStorage
       const storedOnlineVideos = JSON.parse(localStorage.getItem('online_videos') || '[]');
 
-      setVideos([...loadedLocalVideos, ...storedYTVideos, ...storedIPTVideos, ...storedOnlineVideos]);
+      setVideos([...loadedLocalVideos, ...storedYTVideos, ...storedOnlineVideos]);
+      
+      // Load IPTV videos from localStorage
+      const storedIPTVideos = JSON.parse(localStorage.getItem('iptv_videos') || '[]');
+      setIptvLinks(storedIPTVideos);
+
+      // Load FM Channels from localStorage
+      const storedFmChannels = JSON.parse(localStorage.getItem('fm_channels') || '[]');
+      setFmChannels(storedFmChannels);
       
       // Load J2ME apps
       const storedApps = await db.getAllMedia<{id: string, name: string, file: File}>('j2me_apps');
@@ -166,7 +184,7 @@ const App: React.FC = () => {
         // Cleanup object URLs on unmount
         songs.forEach(media => URL.revokeObjectURL(media.url));
         photos.forEach(media => URL.revokeObjectURL(media.url));
-        videos.forEach(video => {
+        allVideos.forEach(video => {
             if (!video.isYoutube && !video.isIPTV && !video.isOnlineVideo && video.url.startsWith('blob:')) {
                 URL.revokeObjectURL(video.url);
             }
@@ -191,6 +209,10 @@ const App: React.FC = () => {
 
   const playSong = (index: number) => {
     if (!songs[index]) return;
+    if (hlsAudioRef.current) {
+        hlsAudioRef.current.destroy();
+        hlsAudioRef.current = null;
+    }
     setNowPlayingMedia({ type: 'song', index });
     if (audioRef.current) {
        audioRef.current.src = songs[index].url;
@@ -200,10 +222,10 @@ const App: React.FC = () => {
   };
   
   const playVideo = (index: number) => {
-    if (!videos[index]) return;
+    if (!allVideos[index]) return;
     setActiveIndex(index);
     setNowPlayingMedia({ type: 'video', index });
-    const video = videos[index];
+    const video = allVideos[index];
 
     if (ytPlayerRef.current && ytPlayerRef.current.destroy) {
         ytPlayerRef.current.destroy();
@@ -221,12 +243,53 @@ const App: React.FC = () => {
     navigateTo(ScreenView.VIDEO_PLAYER);
   };
 
+  const playFmChannel = (index: number) => {
+    if (!fmChannels[index]) return;
+
+    if (hlsAudioRef.current) {
+        hlsAudioRef.current.destroy();
+        hlsAudioRef.current = null;
+    }
+
+    setNowPlayingMedia({ type: 'fm', index });
+    const channel = fmChannels[index];
+    const audioEl = audioRef.current;
+    if (!audioEl) return;
+
+    const proxyUrl = localStorage.getItem('cors_proxy_url') || '';
+    let streamUrl = channel.url;
+    if (proxyUrl && proxyUrl.trim()) {
+        const formattedProxy = proxyUrl.trim();
+        streamUrl = `${formattedProxy.endsWith('/') ? formattedProxy : formattedProxy + '/'}${streamUrl}`;
+    }
+
+    if (channel.url.toLowerCase().includes('.m3u8') && window.Hls && window.Hls.isSupported()) {
+        const hls = new window.Hls();
+        hlsAudioRef.current = hls;
+        hls.loadSource(streamUrl);
+        hls.attachMedia(audioEl);
+        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+            audioEl.play().catch(e => console.error("FM autoplay failed", e));
+        });
+        hls.on(window.Hls.Events.ERROR, (event: any, data: any) => {
+            if (data.fatal) {
+                console.error("HLS fatal error on audio stream:", data);
+            }
+        });
+    } else {
+        audioEl.src = streamUrl;
+    }
+
+    setIsPlaying(true);
+    navigateTo(ScreenView.NOW_PLAYING);
+  };
+
   const handleNavigateToNowPlaying = () => {
     if (!nowPlayingMedia) {
       navigateTo(ScreenView.NOW_PLAYING);
       return;
     }
-    if (nowPlayingMedia.type === 'song') {
+    if (nowPlayingMedia.type === 'song' || nowPlayingMedia.type === 'fm') {
       navigateTo(ScreenView.NOW_PLAYING);
     } else if (nowPlayingMedia.type === 'video') {
       setActiveIndex(nowPlayingMedia.index);
@@ -247,9 +310,12 @@ const App: React.FC = () => {
     if (nowPlayingMedia.type === 'song' && songs.length > 0) {
       const nextIndex = (nowPlayingMedia.index + 1) % songs.length;
       playSong(nextIndex);
-    } else if (nowPlayingMedia.type === 'video' && videos.length > 0) {
-      const nextIndex = (nowPlayingMedia.index + 1) % videos.length;
+    } else if (nowPlayingMedia.type === 'video' && allVideos.length > 0) {
+      const nextIndex = (nowPlayingMedia.index + 1) % allVideos.length;
       playVideo(nextIndex);
+    } else if (nowPlayingMedia.type === 'fm' && fmChannels.length > 0) {
+      const nextIndex = (nowPlayingMedia.index + 1) % fmChannels.length;
+      playFmChannel(nextIndex);
     }
   };
 
@@ -261,15 +327,18 @@ const App: React.FC = () => {
     } else if (nowPlayingMedia.type === 'song' && songs.length > 0) {
       const prevIndex = (nowPlayingMedia.index - 1 + songs.length) % songs.length;
       playSong(prevIndex);
-    } else if (nowPlayingMedia.type === 'video' && videos.length > 0) {
-      const prevIndex = (nowPlayingMedia.index - 1 + videos.length) % videos.length;
+    } else if (nowPlayingMedia.type === 'video' && allVideos.length > 0) {
+      const prevIndex = (nowPlayingMedia.index - 1 + allVideos.length) % allVideos.length;
       playVideo(prevIndex);
+    } else if (nowPlayingMedia.type === 'fm' && fmChannels.length > 0) {
+      const prevIndex = (nowPlayingMedia.index - 1 + fmChannels.length) % fmChannels.length;
+      playFmChannel(prevIndex);
     }
   };
 
   // Effect for handling play/pause
   useEffect(() => {
-    const isYT = nowPlayingMedia?.type === 'video' && videos[nowPlayingMedia.index]?.isYoutube;
+    const isYT = nowPlayingMedia?.type === 'video' && allVideos[nowPlayingMedia.index]?.isYoutube;
 
     if (isYT && ytPlayerRef.current && typeof ytPlayerRef.current.getPlayerState === 'function') {
       const playerState = ytPlayerRef.current.getPlayerState();
@@ -279,7 +348,7 @@ const App: React.FC = () => {
         ytPlayerRef.current.pauseVideo();
       }
     } else if (!isYT) {
-      const mediaRef = nowPlayingMedia?.type === 'song' ? audioRef : videoRef;
+      const mediaRef = (nowPlayingMedia?.type === 'song' || nowPlayingMedia?.type === 'fm') ? audioRef : videoRef;
       const mediaElement = mediaRef.current;
       if (!mediaElement) return;
 
@@ -299,7 +368,7 @@ const App: React.FC = () => {
       
       controlPlayback();
     }
-  }, [isPlaying, nowPlayingMedia, videos]);
+  }, [isPlaying, nowPlayingMedia, allVideos]);
 
   // Effect for tracking progress
   useEffect(() => {
@@ -308,7 +377,7 @@ const App: React.FC = () => {
       progressIntervalRef.current = null;
     }
 
-    const isYT = nowPlayingMedia?.type === 'video' && videos[nowPlayingMedia.index]?.isYoutube;
+    const isYT = nowPlayingMedia?.type === 'video' && allVideos[nowPlayingMedia.index]?.isYoutube;
     if (isYT) {
       progressIntervalRef.current = window.setInterval(() => {
         if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
@@ -319,7 +388,7 @@ const App: React.FC = () => {
         }
       }, 250);
     } else {
-      const mediaRef = nowPlayingMedia?.type === 'song' ? audioRef : videoRef;
+      const mediaRef = (nowPlayingMedia?.type === 'song' || nowPlayingMedia?.type === 'fm') ? audioRef : videoRef;
       const mediaElement = mediaRef.current;
       if (!mediaElement) return;
       
@@ -366,28 +435,39 @@ const App: React.FC = () => {
       const id = `${file.name}-${file.lastModified}`;
       
       if (type === 'music') {
-        window.jsmediatags.read(file, {
-          onSuccess: async (tag: any) => {
-            const { artist, album, title } = tag.tags;
-            const picture = tag.tags.picture;
-            let base64String = '';
-            if (picture) {
-              const base64 = btoa(String.fromCharCode.apply(null, picture.data));
-              base64String = `data:${picture.format};base64,${base64}`;
+        if (window.jsmediatags) {
+          window.jsmediatags.read(file, {
+            onSuccess: async (tag: any) => {
+              const { artist, album, title } = tag.tags;
+              const picture = tag.tags.picture;
+              let base64String = '';
+              if (picture) {
+                const base64 = btoa(String.fromCharCode.apply(null, picture.data));
+                base64String = `data:${picture.format};base64,${base64}`;
+              }
+              const songData = { id, name: title || file.name, artist: artist || 'Unknown Artist', album: album || 'Unknown Album', picture: base64String, file };
+              await db.addMedia('songs', songData);
+              const newSong: Song = { ...songData, url: URL.createObjectURL(file) };
+              setSongs(prev => [...prev, newSong]);
+            },
+            onError: async (error: any) => {
+              console.error(error);
+              const songData = { id, name: file.name, artist: 'Unknown Artist', album: 'Unknown Album', picture: '', file };
+              await db.addMedia('songs', songData);
+              const newSong: Song = { ...songData, url: URL.createObjectURL(file) };
+              setSongs(prev => [...prev, newSong]);
             }
-            const songData = { id, name: title || file.name, artist: artist || 'Unknown Artist', album: album || 'Unknown Album', picture: base64String, file };
-            await db.addMedia('songs', songData);
-            const newSong: Song = { ...songData, url: URL.createObjectURL(file) };
-            setSongs(prev => [...prev, newSong]);
-          },
-          onError: async (error: any) => {
-            console.error(error);
-            const songData = { id, name: file.name, artist: 'Unknown Artist', album: 'Unknown Album', picture: '', file };
-            await db.addMedia('songs', songData);
-            const newSong: Song = { ...songData, url: URL.createObjectURL(file) };
-            setSongs(prev => [...prev, newSong]);
-          }
-        });
+          });
+        } else {
+            console.error("jsmediatags library not loaded, falling back to filename.");
+            const fallback = async () => {
+                const songData = { id, name: file.name, artist: 'Unknown Artist', album: 'Unknown Album', picture: '', file };
+                await db.addMedia('songs', songData);
+                const newSong: Song = { ...songData, url: URL.createObjectURL(file) };
+                setSongs(prev => [...prev, newSong]);
+            };
+            fallback();
+        }
       } else if (type === 'photo') {
           const photoData = { id, name: file.name, file };
           db.addMedia('photos', photoData);
@@ -407,6 +487,12 @@ const App: React.FC = () => {
     });
   };
 
+  const handleAddPhoto = useCallback(async (photoData: { id: string, name: string, file: File }) => {
+    await db.addMedia('photos', photoData);
+    const newPhoto: Photo = { ...photoData, url: URL.createObjectURL(photoData.file) };
+    setPhotos(prev => [...prev, newPhoto]);
+  }, []);
+
   const handleAddYoutubeVideo = (video: Video) => {
     const currentYTVideos = JSON.parse(localStorage.getItem('youtube_videos') || '[]');
     const updatedYTVideos = [...currentYTVideos.filter((v: Video) => v.id !== video.id), video];
@@ -418,7 +504,7 @@ const App: React.FC = () => {
     const currentIPTVideos = JSON.parse(localStorage.getItem('iptv_videos') || '[]');
     const updatedIPTVideos = [...currentIPTVideos.filter((v: Video) => v.id !== video.id), video];
     localStorage.setItem('iptv_videos', JSON.stringify(updatedIPTVideos));
-    setVideos(prev => [...prev.filter(v => v.id !== video.id), video]);
+    setIptvLinks(updatedIPTVideos);
   };
 
   const handleAddOnlineVideo = (video: Video) => {
@@ -428,6 +514,13 @@ const App: React.FC = () => {
     setVideos(prev => [...prev.filter(v => v.id !== video.id), video]);
   };
 
+  const handleAddFmChannel = (channel: FmChannel) => {
+    const currentFmChannels = JSON.parse(localStorage.getItem('fm_channels') || '[]');
+    const updatedFmChannels = [...currentFmChannels.filter((c: FmChannel) => c.id !== channel.id), channel];
+    localStorage.setItem('fm_channels', JSON.stringify(updatedFmChannels));
+    setFmChannels(updatedFmChannels);
+  };
+
   const handleClearSongs = async () => {
     await db.clearStore('songs');
     songs.forEach(song => URL.revokeObjectURL(song.url));
@@ -435,10 +528,16 @@ const App: React.FC = () => {
     setActiveIndex(0);
   };
 
+  const handleClearPhotos = async () => {
+    await db.clearStore('photos');
+    photos.forEach(photo => URL.revokeObjectURL(photo.url));
+    setPhotos([]);
+    setActiveIndex(0);
+  };
+
   const handleClearVideos = async () => {
     await db.clearStore('videos');
     localStorage.removeItem('youtube_videos');
-    localStorage.removeItem('iptv_videos');
     localStorage.removeItem('online_videos');
     videos.forEach(video => {
         if (!video.isYoutube && !video.isIPTV && !video.isOnlineVideo && video.url.startsWith('blob:')) {
@@ -446,6 +545,18 @@ const App: React.FC = () => {
         }
     });
     setVideos([]);
+    setActiveIndex(0);
+  };
+
+  const handleClearIptvLinks = () => {
+    localStorage.removeItem('iptv_videos');
+    setIptvLinks([]);
+    setActiveIndex(0);
+  };
+
+  const handleClearFmChannels = () => {
+    localStorage.removeItem('fm_channels');
+    setFmChannels([]);
     setActiveIndex(0);
   };
 
@@ -459,17 +570,25 @@ const App: React.FC = () => {
   const handleSeek = (direction: 'forward' | 'backward') => {
     if (!nowPlayingMedia) return;
     const seekAmount = 5; // 5 seconds
-    const isYT = nowPlayingMedia.type === 'video' && videos[nowPlayingMedia.index].isYoutube;
+    const isYT = nowPlayingMedia.type === 'video' && allVideos[nowPlayingMedia.index].isYoutube;
 
     if (isYT && ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
       const currentTime = ytPlayerRef.current.getCurrentTime();
       const newTime = direction === 'forward' ? currentTime + seekAmount : currentTime - seekAmount;
       ytPlayerRef.current.seekTo(newTime, true);
     } else {
-      const mediaRef = nowPlayingMedia.type === 'song' ? audioRef : videoRef;
+      const mediaRef = (nowPlayingMedia.type === 'song' || nowPlayingMedia.type === 'fm') ? audioRef : videoRef;
       if (mediaRef.current) {
         mediaRef.current.currentTime += (direction === 'forward' ? seekAmount : -seekAmount);
       }
+    }
+  };
+
+  const handleSetCorsProxy = () => {
+    const currentProxy = localStorage.getItem('cors_proxy_url') || '';
+    const newProxy = window.prompt('Enter your CORS proxy URL. (e.g., https://my-proxy.com/)\n\nLeave blank to disable.', currentProxy);
+    if (newProxy !== null) { // prompt returns null on cancel
+        localStorage.setItem('cors_proxy_url', newProxy.trim());
     }
   };
 
@@ -509,6 +628,11 @@ const App: React.FC = () => {
   };
 
   const handleSelect = (selectedId?: any) => {
+    if (isGamepadMode) {
+        handleGamepadInput('a');
+        return;
+    }
+
     const mainMenu: MenuItem[] = [
         { id: ScreenView.MUSIC, name: 'Music' },
         { id: ScreenView.PHOTOS, name: 'Photos' },
@@ -516,19 +640,25 @@ const App: React.FC = () => {
         { id: ScreenView.EXTRAS, name: 'Extras' },
         { id: ScreenView.SETTINGS, name: 'Settings' },
         { id: ScreenView.SHUFFLE_PLAY, name: 'Shuffle Songs' },
-        { id: ScreenView.NOW_PLAYING, name: 'Now Playing' },
     ];
     
     const musicMenu: MenuItem[] = [
         { id: ScreenView.COVER_FLOW, name: 'Cover Flow' },
         { id: ScreenView.MUSIC, name: 'All Songs' }, 
+        { id: ScreenView.FM_RADIO, name: 'FM Radio' },
         { id: ScreenView.ACTION, name: 'Add Music' },
     ];
     
-    const photosMenu: MenuItem[] = [
-        { id: ScreenView.PHOTO_VIEWER, name: 'View Photos' },
-        { id: ScreenView.ACTION, name: 'Add Photos' },
-    ];
+    const getPhotosMenu = (photos: Photo[]): CustomMenuItem[] => {
+        const menu: CustomMenuItem[] = [
+            { id: ScreenView.PHOTO_VIEWER, name: 'View Photos' },
+            { id: 'add', name: 'Add Photos' },
+        ];
+        if (photos.length > 0) {
+            menu.push({ id: 'clear', name: 'Clear Photos' });
+        }
+        return menu;
+    }
 
     const videosMenu: MenuItem[] = [
         { id: ScreenView.VIDEO_LIST, name: 'View Videos' },
@@ -542,6 +672,7 @@ const App: React.FC = () => {
     const extrasMenu: MenuItem[] = [
       { id: ScreenView.GAMES, name: 'Games' },
       { id: ScreenView.APPS, name: 'Apps' },
+      { id: ScreenView.CAMERA, name: 'Camera' },
     ];
 
     const gamesMenu: MenuItem[] = [
@@ -560,6 +691,7 @@ const App: React.FC = () => {
     
     const settingsMenu: MenuItem[] = [
       { id: ScreenView.THEMES, name: 'Themes' },
+      { id: ScreenView.CORS_PROXY, name: 'CORS Proxy' },
     ];
 
     switch (currentScreen) {
@@ -572,12 +704,20 @@ const App: React.FC = () => {
                 if (newIndex !== -1) setActiveIndex(newIndex);
             }
 
-            if (idToUse === ScreenView.NOW_PLAYING) {
-                handleNavigateToNowPlaying();
-            } else if (idToUse === ScreenView.SHUFFLE_PLAY) {
-                if (songs.length > 0) {
-                    const randomIndex = Math.floor(Math.random() * songs.length);
-                    playSong(randomIndex);
+            if (idToUse === ScreenView.SHUFFLE_PLAY) {
+                const allPlayable = [
+                    ...songs.map((song, index) => ({ type: 'song', index })),
+                    ...fmChannels.map((channel, index) => ({ type: 'fm', index }))
+                ];
+            
+                if (allPlayable.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * allPlayable.length);
+                    const selectedMedia = allPlayable[randomIndex];
+                    if (selectedMedia.type === 'song') {
+                        playSong(selectedMedia.index);
+                    } else if (selectedMedia.type === 'fm') {
+                        playFmChannel(selectedMedia.index);
+                    }
                 }
             } else {
                 navigateTo(idToUse);
@@ -622,16 +762,38 @@ const App: React.FC = () => {
             break;
         }
 
+        case ScreenView.FM_RADIO: {
+            const menuItems = [
+                { id: 'add' },
+                ...fmChannels.map((c, i) => ({ id: i })),
+                ...(fmChannels.length > 0 ? [{ id: 'clear' }] : [])
+            ];
+            const item = menuItems[activeIndex];
+            const idToUse = selectedId !== undefined ? selectedId : item.id;
+            
+            if (idToUse === 'add') {
+                navigateTo(ScreenView.ADD_FM_CHANNEL);
+            } else if (idToUse === 'clear') {
+                handleClearFmChannels();
+            } else if (typeof idToUse === 'number') {
+                playFmChannel(idToUse);
+            }
+            break;
+        }
+
         case ScreenView.PHOTOS: {
-            const idToUse = selectedId !== undefined ? selectedId : photosMenu[activeIndex].id;
+            const menu = getPhotosMenu(photos);
+            const idToUse = selectedId !== undefined ? selectedId : menu[activeIndex].id;
              if (selectedId !== undefined) {
-                const newIndex = photosMenu.findIndex(item => item.id === idToUse);
+                const newIndex = menu.findIndex(item => item.id === idToUse);
                 if (newIndex !== -1) setActiveIndex(newIndex);
             }
-            if (idToUse === ScreenView.ACTION) {
+            if (idToUse === 'add') {
                 photoInputRef.current?.click();
+            } else if (idToUse === 'clear') {
+                handleClearPhotos();
             } else {
-                navigateTo(idToUse);
+                navigateTo(idToUse as ScreenView);
             }
             break;
         }
@@ -652,7 +814,23 @@ const App: React.FC = () => {
         
         case ScreenView.SETTINGS: {
             const idToUse = selectedId !== undefined ? selectedId : settingsMenu[activeIndex].id;
-            navigateTo(idToUse);
+            
+            if (selectedId !== undefined) {
+                const newIndex = settingsMenu.findIndex(item => item.id === idToUse);
+                if (newIndex !== -1) setActiveIndex(newIndex);
+            }
+
+            if (idToUse === ScreenView.CORS_PROXY) {
+                handleSetCorsProxy();
+            } else {
+                navigateTo(idToUse);
+            }
+            break;
+        }
+
+        case ScreenView.CORS_PROXY: {
+            handleSetCorsProxy();
+            goBack();
             break;
         }
 
@@ -666,6 +844,10 @@ const App: React.FC = () => {
 
         case ScreenView.EXTRAS: {
             const idToUse = selectedId !== undefined ? selectedId : extrasMenu[activeIndex].id;
+            if (selectedId !== undefined) {
+                const newIndex = extrasMenu.findIndex(item => item.id === idToUse);
+                if (newIndex !== -1) setActiveIndex(newIndex);
+            }
             navigateTo(idToUse);
             break;
         }
@@ -693,7 +875,6 @@ const App: React.FC = () => {
             } else if (indexToUse > 0 && indexToUse <= totalApps) {
                 const selectedApp = j2meApps[indexToUse - 1];
                 setRunningApp(selectedApp);
-                // Fix: Corrected typo from JME_RUNNER to J2ME_RUNNER
                 navigateTo(ScreenView.J2ME_RUNNER);
             }
             break;
@@ -706,40 +887,34 @@ const App: React.FC = () => {
         case ScreenView.SNAKE:
             snakeRef.current?.startGame();
             break;
+        
+        case ScreenView.CAMERA:
+            cameraRef.current?.capture();
+            break;
 
         case ScreenView.VIDEO_LIST: {
-            const indexToUse = selectedId ?? activeIndex;
-            if (selectedId === 'clear' || (selectedId === undefined && indexToUse === videos.length)) {
+            const indexInVideosList = selectedId ?? activeIndex;
+            if (selectedId === 'clear' || (selectedId === undefined && indexInVideosList === videos.length)) {
                 handleClearVideos();
-            } else if (videos[indexToUse]) {
-                playVideo(indexToUse);
+            } else if (videos[indexInVideosList]) {
+                const videoToPlay = videos[indexInVideosList];
+                const indexInAllVideos = allVideos.findIndex(v => v.id === videoToPlay.id);
+                if (indexInAllVideos !== -1) {
+                    playVideo(indexInAllVideos);
+                }
             }
             break;
         }
         
         case ScreenView.LIVE_TV: {
-            const iptvVideos = videos.filter(v => v.isIPTV);
-
-            let effectiveId: any;
-            if (selectedId !== undefined) {
-                effectiveId = selectedId;
-            } else {
-                const menuItems = [
-                    ...iptvVideos, 
-                    ...(iptvVideos.length > 0 ? [{ id: 'clear' }] : [])
-                ];
-                effectiveId = menuItems[activeIndex]?.id;
-            }
-
-            if (effectiveId === 'clear') {
-                const otherVideos = videos.filter(v => !v.isIPTV);
-                localStorage.removeItem('iptv_videos');
-                setVideos(otherVideos);
-                setActiveIndex(0);
-            } else if (effectiveId) {
-                const originalIndex = videos.findIndex(v => v.id === effectiveId);
-                if (originalIndex !== -1) {
-                    playVideo(originalIndex);
+            const indexToUse = selectedId ?? activeIndex;
+            if (indexToUse === 'clear' || (selectedId === undefined && indexToUse === iptvLinks.length)) {
+                handleClearIptvLinks();
+            } else if (typeof indexToUse === 'number' && iptvLinks[indexToUse]) {
+                const videoToPlay = iptvLinks[indexToUse];
+                const indexInAllVideos = allVideos.findIndex(v => v.id === videoToPlay.id);
+                if (indexInAllVideos !== -1) {
+                    playVideo(indexInAllVideos);
                 }
             }
             break;
@@ -769,6 +944,14 @@ const App: React.FC = () => {
     }
 };
 
+  const handleCenterDoubleClick = () => {
+    if (isGameScreen) {
+      toggleGamepadMode();
+    } else if (currentScreen === ScreenView.CAMERA) {
+      cameraRef.current?.switchCamera();
+    }
+  };
+
   return (
     <>
       <IPod
@@ -783,21 +966,31 @@ const App: React.FC = () => {
         onPrev={handlePrev}
         onSeek={handleSeek}
         onSelect={handleSelect}
+        onCenterDoubleClick={handleCenterDoubleClick}
         songs={songs}
         photos={photos}
         videos={videos}
+        iptvLinks={iptvLinks}
+        allVideos={allVideos}
         j2meApps={j2meApps}
+        fmChannels={fmChannels}
         onAddYoutubeVideo={handleAddYoutubeVideo}
         onAddIptvLink={handleAddIptvLink}
         onAddOnlineVideo={handleAddOnlineVideo}
+        onAddFmChannel={handleAddFmChannel}
         handleClearSongs={handleClearSongs}
+        handleClearPhotos={handleClearPhotos}
         handleClearVideos={handleClearVideos}
+        handleClearIptvLinks={handleClearIptvLinks}
         handleClearJ2meApps={handleClearJ2meApps}
+        handleClearFmChannels={handleClearFmChannels}
         playSong={playSong}
         playVideo={playVideo}
+        playFmChannel={playFmChannel}
         handleNavigateToNowPlaying={handleNavigateToNowPlaying}
         nowPlayingMedia={nowPlayingMedia}
         nowPlayingSong={nowPlayingMedia?.type === 'song' ? songs[nowPlayingMedia.index] : undefined}
+        nowPlayingFmChannel={nowPlayingMedia?.type === 'fm' ? fmChannels[nowPlayingMedia.index] : undefined}
         isPlaying={isPlaying}
         setIsPlaying={setIsPlaying}
         progress={progress}
@@ -811,6 +1004,8 @@ const App: React.FC = () => {
         battery={battery}
         brickBreakerRef={brickBreakerRef}
         snakeRef={snakeRef}
+        cameraRef={cameraRef}
+        onAddPhoto={handleAddPhoto}
         isGamepadMode={isGamepadMode}
         toggleGamepadMode={toggleGamepadMode}
         onGamepadInput={handleGamepadInput}
@@ -821,7 +1016,7 @@ const App: React.FC = () => {
         theme={theme}
         setTheme={setTheme}
       />
-      <audio ref={audioRef} />
+      <audio ref={audioRef} crossOrigin="anonymous" />
       <input type="file" accept="audio/*" multiple ref={musicInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'music')} />
       <input type="file" accept="image/*" multiple ref={photoInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'photo')} />
       <input type="file" accept="video/*" multiple ref={videoInputRef} className="hidden" onChange={(e) => handleFileChange(e, 'video')} />

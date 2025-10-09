@@ -42,8 +42,11 @@ const BrickBreaker = forwardRef<{ movePaddle: (dir: 'left' | 'right') => void; s
     const animationFrameIdRef = useRef<number>();
     const gameStateRef = useRef<GameState | null>(null);
 
-    const resetBallAndPaddle = (state: GameState) => {
-        const canvas = canvasRef.current!;
+    // Fix: Refactor resetBallAndPaddle to not take arguments and use the ref directly.
+    const resetBallAndPaddle = () => {
+        if (!gameStateRef.current || !canvasRef.current) return;
+        const state = gameStateRef.current;
+        const canvas = canvasRef.current;
         state.ball.x = canvas.width / 2;
         state.ball.y = canvas.height - PADDLE_Y_OFFSET - PADDLE_HEIGHT - BALL_RADIUS - 1;
         state.ball.dx = 2;
@@ -51,6 +54,7 @@ const BrickBreaker = forwardRef<{ movePaddle: (dir: 'left' | 'right') => void; s
         state.paddleX = (canvas.width - PADDLE_WIDTH) / 2;
     };
     
+    // Fix: Refactor initializeGameState to set initial state directly, avoiding the problematic function call.
     const initializeGameState = (): GameState => {
         const canvas = canvasRef.current!;
         const bricks: Brick[][] = [];
@@ -62,7 +66,12 @@ const BrickBreaker = forwardRef<{ movePaddle: (dir: 'left' | 'right') => void; s
         }
         const state: GameState = {
             paddleX: (canvas.width - PADDLE_WIDTH) / 2,
-            ball: { x: 0, y: 0, dx: 2, dy: -2 },
+            ball: { 
+                x: canvas.width / 2, 
+                y: canvas.height - PADDLE_Y_OFFSET - PADDLE_HEIGHT - BALL_RADIUS - 1,
+                dx: 2, 
+                dy: -2 
+            },
             bricks,
             score: 0,
             lives: 3,
@@ -71,7 +80,6 @@ const BrickBreaker = forwardRef<{ movePaddle: (dir: 'left' | 'right') => void; s
             gameOver: false,
             gameWon: false,
         };
-        resetBallAndPaddle(state);
         return state;
     };
     
@@ -225,7 +233,7 @@ const BrickBreaker = forwardRef<{ movePaddle: (dir: 'left' | 'right') => void; s
                     if (state.lives <= 0) {
                         state.gameOver = true;
                     } else {
-                        resetBallAndPaddle(state);
+                        resetBallAndPaddle();
                     }
                 }
             }

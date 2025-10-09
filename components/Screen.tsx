@@ -1,17 +1,18 @@
 
-import React, { useState } from 'react';
-import { ScreenView, Song, Photo, Video, MenuItem, BatteryState, NowPlayingMedia, J2MEApp, Theme } from '../types';
+import React, { useState, forwardRef, useImperativeHandle, useRef, useEffect, useCallback } from 'react';
+import { ScreenView, Song, Photo, Video, MenuItem, BatteryState, NowPlayingMedia, J2MEApp, Theme, FILTERS, CameraFilter, FmChannel } from '../types';
 import StatusBar from './StatusBar';
 import MenuList, { CustomMenuItem } from './MenuList';
 import NowPlaying from './NowPlaying';
 import CoverFlow from './CoverFlow';
 import VideoPlayer from './VideoPlayer';
 import AddYoutubeVideo from './AddYoutubeVideo';
+import AddFmChannel from './AddFmChannel';
 import Games from './Games';
 import BrickBreaker from './games/BrickBreaker';
 import Snake from './games/Snake';
 import J2MERunner from './J2MERunner';
-import { BrickBreakerRef, SnakeRef } from '../App';
+import { BrickBreakerRef, SnakeRef, CameraRef } from '../App';
 import { MUSIC_ICON_SVG } from '../lib/constants';
 
 interface ScreenProps {
@@ -25,18 +26,28 @@ interface ScreenProps {
   songs: Song[];
   photos: Photo[];
   videos: Video[];
+  iptvLinks: Video[];
+  allVideos: Video[];
   j2meApps: J2MEApp[];
+  fmChannels: FmChannel[];
   onAddYoutubeVideo: (video: Video) => void;
   onAddIptvLink: (video: Video) => void;
   onAddOnlineVideo: (video: Video) => void;
+  onAddFmChannel: (channel: FmChannel) => void;
+  onAddPhoto: (photoData: { id: string, name: string, file: File }) => void;
   handleClearSongs: () => void;
+  handleClearPhotos: () => void;
   handleClearVideos: () => void;
+  handleClearIptvLinks: () => void;
   handleClearJ2meApps: () => void;
+  handleClearFmChannels: () => void;
   playSong: (index: number) => void;
   playVideo: (index: number) => void;
+  playFmChannel: (index: number) => void;
   handleNavigateToNowPlaying: () => void;
   nowPlayingMedia: NowPlayingMedia | null;
   nowPlayingSong?: Song;
+  nowPlayingFmChannel?: FmChannel;
   isPlaying: boolean;
   setIsPlaying: (isPlaying: boolean) => void;
   progress: number;
@@ -51,387 +62,580 @@ interface ScreenProps {
   battery: BatteryState;
   brickBreakerRef: React.RefObject<BrickBreakerRef>;
   snakeRef: React.RefObject<SnakeRef>;
+  cameraRef: React.RefObject<CameraRef>;
   runningApp: J2MEApp | null;
   setRunningApp: (app: J2MEApp | null) => void;
   theme: Theme;
   setTheme: (theme: Theme) => void;
 }
 
-
-const SplitScreenView: React.FC<{ children: React.ReactNode; nowPlayingSong?: Song }> = ({ children, nowPlayingSong }) => {
-    return (
-        <div className="flex flex-grow overflow-hidden">
-            <div className="w-1/2 h-full border-r border-gray-400">
-                {children}
-            </div>
-            <div className="w-1/2 h-full flex items-center justify-center bg-gradient-to-b from-gray-100 to-gray-300">
-                 <img 
-                    src={nowPlayingSong?.picture || MUSIC_ICON_SVG} 
-                    alt="Album Art" 
-                    className="w-[7.5rem] h-[7.5rem] object-cover border border-gray-400 shadow-md"
-                />
-            </div>
-        </div>
-    );
-};
-
-const getYouTubeId = (url: string): string | null => {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-}
-
-const getYouTubeThumbnail = (url: string) => {
-    const videoId = getYouTubeId(url);
-    return videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : undefined;
-}
-
-const AddIptvLink: React.FC<{onAddVideo: (video: Video) => void; goBack: () => void;}> = ({ onAddVideo, goBack }) => {
-    const [iptvUrl, setIptvUrl] = useState('');
-    const [channelName, setChannelName] = useState('');
-    const [error, setError] = useState('');
-
-    const handleAddIptvLink = () => {
-        if (!iptvUrl) {
-            setError('Please enter a URL');
-            return;
-        }
-
-        try {
-            // Test if it is a valid URL format
-            new URL(iptvUrl);
-        } catch (_) {
-            setError('Please enter a valid URL');
-            return;
-        }
-
-        try {
-            const urlPath = iptvUrl.split('?')[0];
-            let name = 'IPTV Stream';
-            if (channelName.trim()) {
-                name = channelName.trim();
-            } else {
-                try {
-                    const decodedUrlPath = decodeURIComponent(urlPath);
-                    const lastSegment = decodedUrlPath.substring(decodedUrlPath.lastIndexOf('/') + 1);
-                    if (lastSegment) {
-                        // Remove extension for a cleaner name
-                        name = lastSegment.replace(/\.(m3u8?)$/i, '');
-                    }
-                } catch(e) {
-                    console.warn('Could not decode URL part for name', e);
-                    const lastSegment = urlPath.substring(urlPath.lastIndexOf('/') + 1);
-                    name = lastSegment.replace(/\.(m3u8?)$/i, '') || 'IPTV Stream';
-                }
-            }
-
-            const newVideo: Video = {
-                id: `iptv-${Date.now()}-${iptvUrl}`,
-                name: name,
-                url: iptvUrl,
-                isYoutube: false,
-                isIPTV: true,
-                isOnlineVideo: false,
-            };
-            onAddVideo(newVideo);
-            setIptvUrl('');
-            setChannelName('');
-            setError('');
-            goBack();
-        } catch (err: any) {
-            console.error(err);
-            setError('An error occurred. Please check the URL.');
-        }
-    };
-
-    return (
-        <div className="flex-grow flex flex-col items-center justify-center relative">
-             <h2 className="bg-gradient-to-b from-gray-200 to-gray-300 text-black text-center font-bold py-1 border-b-2 border-gray-400 w-full flex-shrink-0 absolute top-0">Add IPTV Link</h2>
-            <div className="w-full px-4">
-                <input
-                    type="text"
-                    value={channelName}
-                    onChange={(e) => setChannelName(e.target.value)}
-                    placeholder="Channel Name (optional)"
-                    className="w-full p-2 border border-gray-400 rounded text-sm text-black placeholder-gray-500 mb-2"
-                    aria-label="Channel Name Input"
-                />
-                <input
-                    type="text"
-                    value={iptvUrl}
-                    onChange={(e) => setIptvUrl(e.target.value)}
-                    placeholder="Paste M3U/M3U8 URL here"
-                    className="w-full p-2 border border-gray-400 rounded text-sm text-black placeholder-gray-500"
-                    aria-label="IPTV URL Input"
-                />
-                <button 
-                    onClick={handleAddIptvLink} 
-                    className="mt-2 w-full bg-blue-500 text-white px-3 py-2 rounded text-sm font-bold hover:bg-blue-600 transition-colors"
-                >
-                    Add Stream
-                </button>
-                {error && <p className="text-red-500 text-xs mt-1 text-center">{error}</p>}
-            </div>
-        </div>
-    );
-};
-
-const AddOnlineVideo: React.FC<{onAddVideo: (video: Video) => void; goBack: () => void;}> = ({ onAddVideo, goBack }) => {
-    const [videoUrl, setVideoUrl] = useState('');
-    const [videoName, setVideoName] = useState('');
-    const [error, setError] = useState('');
-
-    const handleAddVideo = () => {
-        if (!videoUrl) {
-            setError('Please enter a video URL');
-            return;
-        }
-
-        try {
-            // Test if it is a valid URL format
-            new URL(videoUrl);
-        } catch (_) {
-            setError('Please enter a valid URL');
-            return;
-        }
-
-        try {
-            const name = videoName.trim() || videoUrl.substring(videoUrl.lastIndexOf('/') + 1) || 'Online Video';
-
-            const newVideo: Video = {
-                id: `online-${Date.now()}-${videoUrl}`,
-                name: name,
-                url: videoUrl,
-                isYoutube: false,
-                isIPTV: false,
-                isOnlineVideo: true,
-            };
-            onAddVideo(newVideo);
-            setVideoUrl('');
-            setVideoName('');
-            setError('');
-            goBack();
-        } catch (err: any) {
-            console.error(err);
-            setError('An error occurred. Please check the URL.');
-        }
-    };
-
-    return (
-        <div className="flex-grow flex flex-col items-center justify-center relative">
-             <h2 className="bg-gradient-to-b from-gray-200 to-gray-300 text-black text-center font-bold py-1 border-b-2 border-gray-400 w-full flex-shrink-0 absolute top-0">Add Online Video</h2>
-            <div className="w-full px-4">
-                <input
-                    type="text"
-                    value={videoName}
-                    onChange={(e) => setVideoName(e.target.value)}
-                    placeholder="Video Name (optional)"
-                    className="w-full p-2 border border-gray-400 rounded text-sm text-black placeholder-gray-500 mb-2"
-                    aria-label="Video Name Input"
-                />
-                <input
-                    type="text"
-                    value={videoUrl}
-                    onChange={(e) => setVideoUrl(e.target.value)}
-                    placeholder="Paste Video URL here"
-                    className="w-full p-2 border border-gray-400 rounded text-sm text-black placeholder-gray-500"
-                    aria-label="Online Video URL Input"
-                />
-                <button onClick={handleAddVideo} className="mt-2 w-full bg-blue-500 text-white px-3 py-2 rounded text-sm font-bold hover:bg-blue-600 transition-colors">Add Video</button>
-                {error && <p className="text-red-500 text-xs mt-1 text-center">{error}</p>}
-            </div>
-        </div>
-    );
-};
-
-
-const Screen: React.FC<ScreenProps> = (props) => {
-  const { currentScreen, activeIndex, setActiveIndex, navigateTo, onSelect, songs, photos, videos, j2meApps, playSong, playVideo, musicInputRef, photoInputRef, videoInputRef, j2meInputRef, handleNavigateToNowPlaying, handleClearSongs, handleClearVideos, handleClearJ2meApps, brickBreakerRef, snakeRef } = props;
-
-  const mainMenu: MenuItem[] = [
-    { id: ScreenView.MUSIC, name: 'Music' },
-    { id: ScreenView.PHOTOS, name: 'Photos' },
-    { id: ScreenView.VIDEOS, name: 'Videos' },
-    { id: ScreenView.EXTRAS, name: 'Extras' },
-    { id: ScreenView.SETTINGS, name: 'Settings' },
-    { id: ScreenView.SHUFFLE_PLAY, name: 'Shuffle Songs' },
-    { id: ScreenView.NOW_PLAYING, name: 'Now Playing' },
-  ];
-
-  const musicMenu: MenuItem[] = [
-    { id: ScreenView.COVER_FLOW, name: 'Cover Flow' },
-    { id: ScreenView.MUSIC, name: 'All Songs' }, 
-    { id: ScreenView.ACTION, name: 'Add Music' },
-  ];
-  
-  const photosMenu: MenuItem[] = [
-      { id: ScreenView.PHOTO_VIEWER, name: 'View Photos' },
-      { id: ScreenView.ACTION, name: 'Add Photos' },
-  ];
-
-  const videosMenu: MenuItem[] = [
-      { id: ScreenView.VIDEO_LIST, name: 'View Videos' },
-      { id: ScreenView.LIVE_TV, name: 'Live TV' },
-      { id: ScreenView.ACTION, name: 'Add Videos' },
-      { id: ScreenView.ADD_YOUTUBE_VIDEO, name: 'Add YouTube Link' },
-      { id: ScreenView.ADD_IPTV_LINK, name: 'Add IPTV Link' },
-      { id: ScreenView.ADD_ONLINE_VIDEO, name: 'Add Online Video' },
-  ];
-  
-  const extrasMenu: MenuItem[] = [
-      { id: ScreenView.GAMES, name: 'Games' },
-      { id: ScreenView.APPS, name: 'Apps' },
-  ];
-
-  const settingsMenu: MenuItem[] = [
-    { id: ScreenView.THEMES, name: 'Themes' },
-  ];
-
-  const themesMenu = [
-    { id: 'classic', name: 'Classic' },
-    { id: 'dark', name: 'Dark' },
-    { id: 'gold', name: 'Gold' },
-  ];
-
-  const getScreenContent = () => {
-    switch (currentScreen) {
-      case ScreenView.MAIN_MENU:
-        return <SplitScreenView nowPlayingSong={props.nowPlayingSong}><MenuList items={mainMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} /></SplitScreenView>;
-      case ScreenView.MUSIC:
-         if(props.navigationStack[props.navigationStack.length-2] === ScreenView.MAIN_MENU) {
-            return <SplitScreenView nowPlayingSong={props.nowPlayingSong}><MenuList items={musicMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} /></SplitScreenView>;
-        }
-      case 99 as ScreenView: // Song list
-        const songItems: CustomMenuItem[] = songs.map((s, i) => ({ 
-            id: i, 
-            name: s.name, 
-            subtext: s.artist,
-            thumbnail: s.picture || MUSIC_ICON_SVG
-        }));
-        if (songs.length > 0) {
-            songItems.push({ id: 'clear', name: '[Clear All Songs]', subtext: 'This action cannot be undone.' });
-        }
-        return <MenuList items={songItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
-      case ScreenView.PHOTOS:
-        return <MenuList items={photosMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
-      case ScreenView.PHOTO_VIEWER:
-        if (photos.length === 0) return <div className="flex-grow flex items-center justify-center text-gray-500">No Photos</div>;
-        return <div className="w-full h-full bg-black flex items-center justify-center">
-            <img src={photos[activeIndex % photos.length].url} alt={photos[activeIndex % photos.length].name} className="max-w-full max-h-full object-contain" />
-        </div>;
-      case ScreenView.VIDEOS:
-        return <MenuList items={videosMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
-      case ScreenView.VIDEO_LIST:
-        if (videos.length === 0) return <div className="flex-grow flex items-center justify-center text-gray-500">No Videos</div>;
-        const videoItems = videos.map((v, i) => ({ 
-            id: i, 
-            name: v.name,
-            subtext: v.isYoutube ? 'YouTube' : v.isIPTV ? 'IPTV Stream' : v.isOnlineVideo ? 'Online Video' : 'Local File',
-            thumbnail: v.isYoutube ? getYouTubeThumbnail(v.url) : undefined,
-        }));
-        if (videos.length > 0) {
-            videoItems.push({ id: 'clear', name: '[Clear All Videos]', subtext: 'This action cannot be undone.' });
-        }
-        return <MenuList items={videoItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
-      case ScreenView.VIDEO_PLAYER:
-        return <VideoPlayer 
-            videos={props.videos} 
-            videoInputRef={props.videoInputRef}
-            nowPlayingMedia={props.nowPlayingMedia}
-            videoRef={props.videoRef}
-            setYtPlayer={props.setYtPlayer}
-            setIsPlaying={props.setIsPlaying}
-            onNext={props.onNext}
-        />;
-      case ScreenView.ADD_YOUTUBE_VIDEO:
-        return <AddYoutubeVideo onAddVideo={props.onAddYoutubeVideo} goBack={props.goBack} />;
-      case ScreenView.ADD_IPTV_LINK:
-        return <AddIptvLink onAddVideo={props.onAddIptvLink} goBack={props.goBack} />;
-      case ScreenView.ADD_ONLINE_VIDEO:
-        return <AddOnlineVideo onAddVideo={props.onAddOnlineVideo} goBack={props.goBack} />;
-      case ScreenView.LIVE_TV:
-        const iptvStreams = videos.filter(v => v.isIPTV);
-        if (iptvStreams.length === 0) return <div className="flex-grow flex items-center justify-center text-gray-500">No IPTV Streams</div>;
-        const iptvItems: CustomMenuItem[] = iptvStreams.map((v) => ({ 
-            id: v.id, 
-            name: v.name,
-            subtext: 'IPTV Stream'
-        }));
-        if (iptvStreams.length > 0) {
-            iptvItems.push({ id: 'clear', name: '[Clear All Streams]', subtext: 'This action cannot be undone.' });
-        }
-        return <MenuList items={iptvItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
-      case ScreenView.SETTINGS:
-        return <MenuList items={settingsMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
-      case ScreenView.THEMES:
-        return <MenuList items={themesMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
-      case ScreenView.EXTRAS:
-        return <MenuList items={extrasMenu} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
-      case ScreenView.GAMES:
-        return <Games 
-            activeIndex={activeIndex} 
-            setActiveIndex={setActiveIndex as (index: number) => void} 
-            onSelect={onSelect}
-        />;
-      case ScreenView.APPS:
-        const appItems: CustomMenuItem[] = [{ id: 'add', name: 'Add App (.jar)', subtext: 'Load a J2ME application or game' }];
-        j2meApps.forEach((app, i) => appItems.push({ id: i, name: app.name, subtext: 'J2ME Application' }));
-        if (j2meApps.length > 0) {
-            appItems.push({ id: 'clear', name: '[Clear All Apps]', subtext: 'This action cannot be undone.' });
-        }
-        return <MenuList items={appItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex} onSelect={onSelect} />;
-      // Fix: Corrected typo from JME_RUNNER to J2ME_RUNNER
-      case ScreenView.J2ME_RUNNER:
-        return <J2MERunner app={props.runningApp} />;
-      case ScreenView.BRICK_BREAKER:
-        return <BrickBreaker ref={brickBreakerRef} goBack={props.goBack} />;
-      case ScreenView.SNAKE:
-        return <Snake ref={snakeRef} goBack={props.goBack} />;
-      case ScreenView.SHUFFLE_PLAY:
-        return <div className="flex-grow flex items-center justify-center text-gray-500">Shuffling all songs...</div>;
-      case ScreenView.NOW_PLAYING:
-        return <NowPlaying {...props} />;
-      case ScreenView.COVER_FLOW:
-        return <CoverFlow {...props} />;
-      default:
-        return <div className="flex-grow flex items-center justify-center">Screen Not Found</div>;
+const dataURLtoFile = (dataurl: string, filename: string): File => {
+    const arr = dataurl.split(',');
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    if (!mimeMatch) throw new Error('Could not parse mime type from data URL');
+    const mime = mimeMatch[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
     }
+    return new File([u8arr], filename, {type:mime});
+}
+
+const Camera = forwardRef<CameraRef, {
+  onAddPhoto: (photoData: { id: string, name: string, file: File }) => void;
+  activeIndex: number;
+}>(({ onAddPhoto, activeIndex }, ref) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const clickAudioRef = useRef<HTMLAudioElement>(null);
+  const switchAudioRef = useRef<HTMLAudioElement>(null);
+  const animationFrameIdRef = useRef<number>();
+  const overlayImageCache = useRef<Record<string, HTMLImageElement>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [isFlashing, setIsFlashing] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [isSwitching, setIsSwitching] = useState(false);
+  
+  const activeFilter = FILTERS[activeIndex % FILTERS.length];
+
+  useEffect(() => {
+    // Preload all overlay images
+    FILTERS.forEach(filter => {
+      if (filter.overlay && !overlayImageCache.current[filter.name]) {
+        const img = new Image();
+        img.src = filter.overlay;
+        img.onload = () => {
+          overlayImageCache.current[filter.name] = img;
+        };
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    // Play a subtle click sound when changing filters.
+    if (clickAudioRef.current) {
+        clickAudioRef.current.currentTime = 0;
+        // Fix: Use an empty arrow function for the catch handler to resolve the "Expected 1 arguments, but got 0" error, as it's a valid way to handle promise rejections without using the error object.
+        clickAudioRef.current.play().catch(() => {});
+    }
+  }, [activeIndex]);
+
+  useEffect(() => {
+    const setupCamera = async () => {
+      setIsReady(false);
+      setError(null);
+      try {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode } });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+              // Bug fix: Explicitly play the video to ensure the stream starts rendering.
+              videoRef.current?.play().catch(e => console.error("Camera video play failed:", e));
+              setIsReady(true);
+              setIsSwitching(false);
+          };
+        }
+      } catch (err) {
+        console.error("Camera access error:", err);
+        setError(`Camera (${facingMode}) not available or access denied.`);
+        setIsSwitching(false);
+      }
+    };
+    setupCamera();
+
+    return () => {
+      // Important: Stop the camera stream when the component unmounts.
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (animationFrameIdRef.current) {
+          cancelAnimationFrame(animationFrameIdRef.current);
+      }
+    };
+  }, [facingMode]);
+
+  const drawVideoToCanvas = useCallback(() => {
+    // Bug fix: Check for readyState >= 3 for more reliable frame drawing.
+    if (videoRef.current && canvasRef.current && videoRef.current.readyState >= 3) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Match canvas dimensions to video to avoid distortion
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        ctx.filter = activeFilter.css;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Draw overlay if it's loaded
+        const overlayImg = overlayImageCache.current[activeFilter.name];
+        if (overlayImg && overlayImg.complete) {
+            ctx.globalAlpha = activeFilter.name === 'Newspaper' ? 0.4 : 0.2;
+            ctx.drawImage(overlayImg, 0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1.0;
+        }
+      }
+    }
+    animationFrameIdRef.current = requestAnimationFrame(drawVideoToCanvas);
+  }, [activeFilter]);
+  
+  useEffect(() => {
+      if (!isReady) return;
+      animationFrameIdRef.current = requestAnimationFrame(drawVideoToCanvas);
+      return () => {
+          if (animationFrameIdRef.current) {
+              cancelAnimationFrame(animationFrameIdRef.current)
+          };
+      }
+  }, [drawVideoToCanvas, isReady]);
+
+  useImperativeHandle(ref, () => ({
+    capture: () => {
+      const video = videoRef.current;
+      if (!video || !isReady) return;
+      
+      // Simulate camera flash
+      setIsFlashing(true);
+      setTimeout(() => setIsFlashing(false), 200);
+
+      if (clickAudioRef.current) {
+        clickAudioRef.current.currentTime = 0;
+        clickAudioRef.current.play().catch(e => {});
+      }
+
+      // Create a temporary canvas to save an un-mirrored image
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = video.videoWidth;
+      tempCanvas.height = video.videoHeight;
+      const ctx = tempCanvas.getContext('2d');
+      if (!ctx) return;
+      
+      ctx.filter = activeFilter.css;
+      ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+      // Draw overlay if it exists
+      const overlayImg = overlayImageCache.current[activeFilter.name];
+      if (overlayImg && overlayImg.complete) {
+          ctx.globalAlpha = activeFilter.name === 'Newspaper' ? 0.4 : 0.2;
+          ctx.drawImage(overlayImg, 0, 0, tempCanvas.width, tempCanvas.height);
+          ctx.globalAlpha = 1.0;
+      }
+      
+      // Draw vignette if it exists
+      if (activeFilter.vignette) {
+          const gradient = ctx.createRadialGradient(
+              tempCanvas.width / 2, tempCanvas.height / 2, tempCanvas.height / 3,
+              tempCanvas.width / 2, tempCanvas.height / 2, tempCanvas.width / 1.5
+          );
+          gradient.addColorStop(0, 'rgba(0,0,0,0)');
+          gradient.addColorStop(1, 'rgba(0,0,0,0.6)');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+      }
+
+      const dataUrl = tempCanvas.toDataURL('image/jpeg');
+      const filename = `iPod-Photo-${new Date().toISOString()}.jpg`;
+      const file = dataURLtoFile(dataUrl, filename);
+      const photoData = { id: filename, name: filename, file };
+      onAddPhoto(photoData);
+    },
+    switchCamera: () => {
+        if (isSwitching) return;
+        
+        // Feature: Play switch sound on camera flip.
+        if (switchAudioRef.current) {
+            switchAudioRef.current.currentTime = 0;
+            switchAudioRef.current.play().catch(e => {});
+        }
+
+        setIsSwitching(true);
+        setFacingMode(prev => (prev === 'user' ? 'environment' : 'user'));
+    }
+  }));
+  
+  const canvasStyle: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    transform: 'none', // Removed mirroring for front camera preview per user request.
+    transition: 'opacity 0.3s ease-in-out',
+    opacity: isReady && !isSwitching ? 1 : 0,
   };
 
-  const getTitleForScreen = () => {
-    switch(currentScreen) {
-        case ScreenView.MAIN_MENU: return "Menu";
-        case ScreenView.MUSIC: return "Music";
-        case ScreenView.PHOTOS: return "Photos";
-        case ScreenView.PHOTO_VIEWER: return "Photo Viewer";
-        case ScreenView.VIDEOS: return "Videos";
-        case ScreenView.VIDEO_LIST: return "All Videos";
-        case ScreenView.VIDEO_PLAYER: return props.nowPlayingMedia?.type === 'video' ? props.videos[props.nowPlayingMedia.index]?.name : 'Video Player';
-        case ScreenView.EXTRAS: return "Extras";
-        case ScreenView.SETTINGS: return "Settings";
-        case ScreenView.THEMES: return "Themes";
-        case ScreenView.NOW_PLAYING: return "Now Playing";
-        case ScreenView.COVER_FLOW: return "Cover Flow";
-        case ScreenView.GAMES: return "Games";
-        case ScreenView.BRICK_BREAKER: return "Brick Breaker";
-        case ScreenView.SNAKE: return "Snake";
-        case ScreenView.APPS: return "Apps";
-        case ScreenView.J2ME_RUNNER: return props.runningApp?.name || "J2ME Runner";
-        case ScreenView.ADD_YOUTUBE_VIDEO: return "Add YouTube";
-        case ScreenView.ADD_IPTV_LINK: return "Add IPTV";
-        case ScreenView.ADD_ONLINE_VIDEO: return "Add Online Video";
-        case ScreenView.LIVE_TV: return "Live TV";
-        case 99 as ScreenView: return "All Songs";
-        default: return "iPod";
-    }
-  }
+  const cameraModeText = facingMode === 'user' ? 'Front' : 'Back';
 
   return (
-    <div className="flex-grow flex flex-col overflow-hidden">
-      <StatusBar title={getTitleForScreen()} battery={props.battery} />
-      {getScreenContent()}
+    <div className="w-full h-full flex flex-col bg-black">
+      <StatusBar title="Camera" battery={{ level: 1, charging: false, supported: false }} />
+      <div className="flex-grow relative overflow-hidden rounded-b-md">
+        {isFlashing && <div className="absolute inset-0 bg-white z-20 animate-flash" />}
+        {error && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white p-4 bg-black">
+            <p className="font-bold text-red-500 mb-2">Camera Error</p>
+            <p className="text-xs">{error}</p>
+          </div>
+        )}
+        {(!isReady || isSwitching) && !error && (
+            <div className="absolute inset-0 flex items-center justify-center text-white text-sm bg-black">
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Loading Camera...
+            </div>
+        )}
+        {activeFilter.isVhs && <div className="absolute inset-0 vhs-overlay z-10" />}
+        
+        <video ref={videoRef} autoPlay playsInline muted className="hidden"></video>
+        <canvas ref={canvasRef} style={canvasStyle}></canvas>
+        {activeFilter.vignette && <div className="absolute inset-0 pointer-events-none" style={{boxShadow: 'inset 0 0 5rem rgba(0,0,0,0.6)'}} />}
+        
+        <audio ref={clickAudioRef} src="data:audio/mpeg;base64,SUQzBAAAAAAAI1RTSEUAAAAbAAADN1e/oEIABAAAAAAAUVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV-AAAAAGGgYAAAAAAAAAAAAAAAAAAP/V/Jqanb69iDSm40iK40kOKmB4qUExqYLGjA8aMDhpgegJCAmaFjRoZIAEwwWNGB40YHiwgKADBkwPDDB4wJDgAQOGBwwYMjxowPCgAUOGBw4cMDxwYMjwwAEjA4ZGDgAZMjhoZIAEwwOGDCApMMDgoAHDA4YMD0xwYKDgwIHDgwcOGSA0eICg4AEjA4YHDxgyQGDgAaQDBiQpHBggNEjwYADSAQMGBw0YJDRoANIBgwMGDSAZGCDA8KAAGbAAyADhQSMDBgANEgAZQHCgAYMGB1AMHCApQGAgARkCgAEGAwYEIA0eDJAgGGAwYACkAwYEIA0YADBggIABgwYMDxgwQJDgAaQDBgwYQDogwPDgAQMDhoMGMgAYQGAAyADhQYMIDgAYMDwYMDxggMDBgYMjA4AGDAA8QJDwwICgAQMGCBAeHCA0YACAAYIGDRggQMDwgAEDgAcIPHggJGigAYMIDhgYJBAAJDQwAMgAwcIDQ4QGCA0YAGAAyAEGCRggAGCAYADBggJDgAcMPCAYYECAAAMGCBAQGGDAYMABgwQEDBggQGgA4QABggQGggYQGDAACDA8QGBAYMABgwMCDA8QDBgAAOBggQECBAQMGCBAeIMDAAMEDBAYYABgYGEBg0AGCAwYIEBgYYAgwwAAAwYDBgAcMGCAwQIABA4AGDA8YQGAAYQGCAwQGDRggMAAA4AHCAwQIQAAYQGAAYMDBgAEBgAIQAhgAAGAA4cCAAQMGCAgYMDwYQGAAYQGCAA4AQAAYAEBggADDgAMAABgAAGAAwAABAAYYMDwYAGAAwAADAAYAGCAYYADAAYYAGAAwQECAAwAAAAQMCAAwAAGAwYAGAAwPBAAAGAAwAADBAYYDAAYAECAAwPDBAAMAABgAEBgAcEAgwADgAYAGEBwQMCAAwAECAwAAEAAYYDAAYAGAAAEBgwYIABgYQGAAYACAQIQAAYAECAwAAAGAAwYGEBgAAHDAAYYAAAYQGAAYMDxAQMGCAgQDBgAAAAAABgAAAAAAGAAwAAGAwYEAAAAYAEBAQAAAAYADBAAGAAwYAAAwPBAAYAAAAYYADAAAECAAEBgAECAAwAAABgYAGAAYAEAAYADDAwPBAAAGAAwQAAAAAYYAAAAAGAAwQAAABgAAABgQADgAYADBAAAAAAcADgAYAAAAAABgAAAABgAAABgAAAAAAABgAAABgAGAAAAAABAQMAAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJABMAEQAAAAAABn/n/u/gAAAABJRU5ErkJggg=="></audio>
+        <audio ref={switchAudioRef} src="data:audio/mpeg;base64,SUQzBAAAAAAAI1RTSEUAAAAbAAADN1e/oEIABAAAAAAAUVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV-AAAAAFlvgYAAAAAAAAAAAAAAAAAAP/V/JgAFu8OAAAABQAB" />
+      </div>
+
+      <div className="bg-gray-800 text-white p-1 text-center font-bold text-sm flex-shrink-0 flex justify-between items-center">
+        <span>{cameraModeText}</span>
+        <span className="truncate">{activeFilter.name}</span>
+        <span className="w-12 text-right"></span>
+      </div>
     </div>
   );
+});
+
+const MENU_ICONS = [
+  // Music
+  `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#a4accc"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>`,
+  // Photos
+  `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#a4accc"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>`,
+  // Videos
+  `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#a4accc"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>`,
+  // Extras
+  `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#a4accc"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`,
+  // Settings
+  `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#a4accc"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49.42l-.38-2.65c.61-.25 1.17-.59-1.69-.98l2.49 1c.23.09.49 0 .61.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>`,
+  // Shuffle Songs
+  `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#a4accc"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>`
+];
+
+const Screen: React.FC<ScreenProps> = (props) => {
+    const { currentScreen, activeIndex, setActiveIndex, onSelect, songs, photos, videos, j2meApps, nowPlayingMedia, playSong, theme, setTheme, iptvLinks } = props;
+
+    const renderContent = () => {
+        switch (currentScreen) {
+            case ScreenView.MAIN_MENU: {
+                const menuItems: MenuItem[] = [
+                    { id: ScreenView.MUSIC, name: 'Music' },
+                    { id: ScreenView.PHOTOS, name: 'Photos' },
+                    { id: ScreenView.VIDEOS, name: 'Videos' },
+                    { id: ScreenView.EXTRAS, name: 'Extras' },
+                    { id: ScreenView.SETTINGS, name: 'Settings' },
+                    { id: ScreenView.SHUFFLE_PLAY, name: 'Shuffle Songs' },
+                ];
+                return (
+                    <>
+                        <StatusBar title="Menu" battery={props.battery} />
+                        <div className="flex-grow flex flex-row overflow-hidden">
+                            <div className="w-1/2">
+                                <MenuList items={menuItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={onSelect} />
+                            </div>
+                            <div className="w-1/2 flex items-center justify-center p-4" style={{ backgroundColor: 'var(--screen-bg)' }}>
+                                <div 
+                                    className="w-32 h-32 bg-gray-100 flex items-center justify-center rounded-lg shadow-lg border border-gray-300"
+                                    dangerouslySetInnerHTML={{ __html: MENU_ICONS[activeIndex] || '' }}
+                                />
+                            </div>
+                        </div>
+                    </>
+                );
+            }
+            case ScreenView.MUSIC: {
+                 if(props.navigationStack[props.navigationStack.length - 2] === ScreenView.MAIN_MENU) {
+                     const menuItems: MenuItem[] = [
+                        { id: ScreenView.COVER_FLOW, name: 'Cover Flow' },
+                        { id: ScreenView.MUSIC, name: 'All Songs' },
+                        { id: ScreenView.FM_RADIO, name: 'FM Radio' },
+                        { id: ScreenView.ACTION, name: 'Add Music' },
+                    ];
+                     return (
+                         <>
+                             <StatusBar title="Music" battery={props.battery} />
+                             <MenuList items={menuItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={onSelect} />
+                         </>
+                     );
+                 }
+                 // Fallthrough to show all songs
+            }
+            // eslint-disable-next-line no-fallthrough
+            case 99 as ScreenView: { // Special ID for "All Songs" list
+                const menuItems: CustomMenuItem[] = songs.map((song, index) => ({
+                    id: index,
+                    name: song.name,
+                    subtext: `${song.artist} - ${song.album}`,
+                    thumbnail: song.picture || MUSIC_ICON_SVG,
+                }));
+
+                if (songs.length > 0) {
+                    menuItems.push({ id: 'clear', name: 'Clear All Songs', subtext: 'Deletes all songs from the iPod' });
+                }
+
+                return (
+                    <>
+                        <StatusBar title="All Songs" battery={props.battery} />
+                        {songs.length > 0 ? (
+                            <MenuList items={menuItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={onSelect} />
+                        ) : (
+                            <div className="flex-grow flex flex-col items-center justify-center text-center p-4">
+                                <p className="font-bold mb-2">No Music</p>
+                                <p className="text-sm">Use the 'Add Music' option to add songs.</p>
+                            </div>
+                        )}
+                    </>
+                )
+            }
+            case ScreenView.FM_RADIO: {
+                const menuItems: CustomMenuItem[] = [
+                    { id: 'add', name: 'Add FM Channel' },
+                    ...props.fmChannels.map((channel, index) => ({
+                        id: index,
+                        name: channel.name,
+                        subtext: 'FM Stream'
+                    })),
+                ];
+                if (props.fmChannels.length > 0) {
+                     menuItems.push({ id: 'clear', name: 'Clear All Channels' });
+                }
+                return (
+                    <>
+                        <StatusBar title="FM Radio" battery={props.battery} />
+                        <MenuList items={menuItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={onSelect} />
+                    </>
+                )
+            }
+            case ScreenView.ADD_FM_CHANNEL:
+                return <AddFmChannel onAddFmChannel={props.onAddFmChannel} goBack={props.goBack} />;
+            case ScreenView.PHOTOS: {
+                const menuItems: CustomMenuItem[] = [
+                    { id: ScreenView.PHOTO_VIEWER, name: 'View Photos' },
+                    { id: 'add', name: 'Add Photos' },
+                ];
+                if (photos.length > 0) {
+                    menuItems.push({ id: 'clear', name: 'Clear Photos' });
+                }
+                return (
+                    <>
+                        <StatusBar title="Photos" battery={props.battery} />
+                        <MenuList items={menuItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={onSelect} />
+                    </>
+                );
+            }
+            case ScreenView.PHOTO_VIEWER: {
+                const photo = photos[activeIndex];
+                return (
+                    <div className="w-full h-full bg-black flex flex-col">
+                         <StatusBar title={photo ? photo.name : "Photos"} battery={props.battery} />
+                         <div className="flex-grow flex items-center justify-center overflow-hidden">
+                             {photo ? (
+                                <img src={photo.url} alt={photo.name} className="max-w-full max-h-full object-contain" />
+                             ) : (
+                                <p className="text-white">No photos found.</p>
+                             )}
+                         </div>
+                    </div>
+                );
+            }
+            case ScreenView.VIDEOS: {
+                 const menuItems: MenuItem[] = [
+                    { id: ScreenView.VIDEO_LIST, name: 'View Videos' },
+                    { id: ScreenView.LIVE_TV, name: 'Live TV' },
+                    { id: ScreenView.ACTION, name: 'Add Videos' },
+                    { id: ScreenView.ADD_YOUTUBE_VIDEO, name: 'Add YouTube Link' },
+                    { id: ScreenView.ADD_IPTV_LINK, name: 'Add IPTV Link' },
+                    { id: ScreenView.ADD_ONLINE_VIDEO, name: 'Add Online Video' },
+                ];
+                return (
+                    <>
+                        <StatusBar title="Videos" battery={props.battery} />
+                        <MenuList items={menuItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={onSelect} />
+                    </>
+                );
+            }
+            case ScreenView.VIDEO_LIST: {
+                const menuItems: CustomMenuItem[] = videos.map((video, index) => ({
+                    id: index,
+                    name: video.name,
+                    subtext: video.isYoutube ? 'YouTube' : (video.isOnlineVideo ? 'Online Video' : 'Local File'),
+                }));
+                if (videos.length > 0) {
+                     menuItems.push({ id: 'clear', name: 'Clear All Videos' });
+                }
+                return (
+                     <>
+                        <StatusBar title="All Videos" battery={props.battery} />
+                        {videos.length > 0 ? (
+                           <MenuList items={menuItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={onSelect} />
+                        ) : (
+                            <div className="flex-grow flex flex-col items-center justify-center text-center p-4">
+                                <p className="font-bold mb-2">No Videos</p>
+                                <p className="text-sm">Use the options in the previous menu to add videos.</p>
+                            </div>
+                        )}
+                     </>
+                )
+            }
+            case ScreenView.LIVE_TV: {
+                const menuItems: CustomMenuItem[] = iptvLinks.map((video, index) => ({
+                    id: index,
+                    name: video.name,
+                    subtext: "IPTV Stream"
+                }));
+                if (iptvLinks.length > 0) {
+                    menuItems.push({ id: 'clear', name: 'Clear IPTV Links' });
+                }
+                 return (
+                     <>
+                        <StatusBar title="Live TV" battery={props.battery} />
+                        {iptvLinks.length > 0 ? (
+                            <MenuList items={menuItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={onSelect} />
+                        ) : (
+                             <div className="flex-grow flex flex-col items-center justify-center text-center p-4">
+                                <p className="font-bold mb-2">No IPTV Links</p>
+                                <p className="text-sm">Add IPTV links from the Videos menu.</p>
+                            </div>
+                        )}
+                     </>
+                 );
+            }
+            case ScreenView.ADD_YOUTUBE_VIDEO:
+                return <AddYoutubeVideo onAddVideo={props.onAddYoutubeVideo} goBack={props.goBack} />;
+            case ScreenView.ADD_IPTV_LINK:
+                 // Fix: Access AddIptvLink as a property of AddYoutubeVideo.
+                 return <AddYoutubeVideo.AddIptvLink onAddVideo={props.onAddIptvLink} goBack={props.goBack} />;
+            case ScreenView.ADD_ONLINE_VIDEO:
+                // Fix: Access AddOnlineVideo as a property of AddYoutubeVideo.
+                return <AddYoutubeVideo.AddOnlineVideo onAddVideo={props.onAddOnlineVideo} goBack={props.goBack} />;
+            case ScreenView.EXTRAS: {
+                const menuItems: MenuItem[] = [
+                    { id: ScreenView.GAMES, name: 'Games' },
+                    { id: ScreenView.APPS, name: 'Apps' },
+                    { id: ScreenView.CAMERA, name: 'Camera' },
+                ];
+                return (
+                    <>
+                        <StatusBar title="Extras" battery={props.battery} />
+                        <MenuList items={menuItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={onSelect} />
+                    </>
+                );
+            }
+            case ScreenView.GAMES:
+                return (
+                    <>
+                        <StatusBar title="Games" battery={props.battery} />
+                        <Games activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={onSelect} />
+                    </>
+                );
+            case ScreenView.APPS: {
+                const menuItems: CustomMenuItem[] = [
+                    { id: 'add', name: 'Add App (.jar)' },
+                    ...j2meApps.map((app) => ({
+                        id: app.id,
+                        name: app.name,
+                        subtext: 'J2ME Application'
+                    })),
+                ];
+                if (j2meApps.length > 0) {
+                     menuItems.push({ id: 'clear', name: 'Clear All Apps' });
+                }
+                return (
+                    <>
+                        <StatusBar title="Apps" battery={props.battery} />
+                        <MenuList items={menuItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={(id) => {
+                            if (id === 'add') {
+                                props.j2meInputRef.current?.click();
+                            } else if (id === 'clear') {
+                                props.handleClearJ2meApps();
+                            } else {
+                                const appIndex = j2meApps.findIndex(app => app.id === id);
+                                onSelect(appIndex + 1); // +1 to account for 'Add'
+                            }
+                        }} />
+                    </>
+                )
+            }
+            case ScreenView.SETTINGS: {
+                 const menuItems: MenuItem[] = [
+                    { id: ScreenView.THEMES, name: 'Themes' },
+                    { id: ScreenView.CORS_PROXY, name: 'CORS Proxy' },
+                ];
+                 return (
+                    <>
+                        <StatusBar title="Settings" battery={props.battery} />
+                        <MenuList items={menuItems} activeIndex={activeIndex} setActiveIndex={setActiveIndex as any} onSelect={onSelect} />
+                    </>
+                 );
+            }
+            case ScreenView.THEMES: {
+                const themes: Theme[] = ['classic', 'dark', 'gold'];
+                const menuItems: CustomMenuItem[] = themes.map(t => ({
+                    id: t,
+                    name: t.charAt(0).toUpperCase() + t.slice(1),
+                }));
+                const currentThemeIndex = themes.indexOf(theme);
+                return (
+                    <>
+                        <StatusBar title="Themes" battery={props.battery} />
+                        <MenuList items={menuItems} activeIndex={currentThemeIndex} setActiveIndex={(i) => setTheme(themes[i])} onSelect={(id) => onSelect(id)} />
+                    </>
+                )
+            }
+            case ScreenView.NOW_PLAYING:
+                return (
+                    <>
+                        <StatusBar title={nowPlayingMedia?.type === 'song' ? 'Now Playing' : 'Video Player'} battery={props.battery} />
+                        <NowPlaying {...props} />
+                    </>
+                );
+            case ScreenView.COVER_FLOW:
+                 return (
+                    <>
+                        <StatusBar title="Cover Flow" battery={props.battery} />
+                        <CoverFlow 
+                            songs={songs} 
+                            activeIndex={activeIndex} 
+                            setActiveIndex={setActiveIndex} 
+                            onSelect={onSelect} 
+                        />
+                    </>
+                 );
+            case ScreenView.VIDEO_PLAYER:
+                return <VideoPlayer {...props} videos={props.allVideos} />;
+            case ScreenView.BRICK_BREAKER:
+                 return <BrickBreaker ref={props.brickBreakerRef} goBack={props.goBack} />;
+            case ScreenView.SNAKE:
+                 return <Snake ref={props.snakeRef} goBack={props.goBack} />;
+            case ScreenView.J2ME_RUNNER:
+                return <J2MERunner app={props.runningApp} />;
+            case ScreenView.CAMERA:
+                return <Camera ref={props.cameraRef} onAddPhoto={props.onAddPhoto} activeIndex={activeIndex} />;
+            default:
+                return (
+                    <div className="flex-grow flex items-center justify-center">
+                        <p>Screen not implemented</p>
+                    </div>
+                );
+        }
+    };
+
+    return <>{renderContent()}</>;
 };
 
 export default Screen;

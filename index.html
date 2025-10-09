@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>iPod Classic Replica</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.5/dist/jsmediatags.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsmediatags@3.9.7/dist/jsmediatags.min.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <!-- Placeholder for J2ME Emulator Library -->
@@ -44,10 +44,10 @@
     --menu-active-text-color: white;
     --menu-active-subtext-color: #d1d5db;
     --menu-border-color: #e5e7eb;
-    --wheel-bg: #4b5563;
-    --wheel-icon-color: #9ca3af;
+    --wheel-bg: #4D555D;
+    --wheel-icon-color: #ADB2B7;
     --center-button-bg: white;
-    --center-button-border: #4b5563;
+    --center-button-border: white;
     --gamepad-shoulder-bg: #6b7280;
     --gamepad-shoulder-active-bg: #4b5563;
     --gamepad-dpad-icon-color: #9ca3af;
@@ -150,6 +150,50 @@
   }
   .theme-dark body { background-color: #111827; }
   .theme-gold body { background-color: #fffbeb; }
+
+  /* Camera Animations */
+  @keyframes flash-animation {
+    0% { opacity: 0.7; }
+    100% { opacity: 0; }
+  }
+  .animate-flash {
+    animation: flash-animation 0.2s ease-out;
+  }
+
+  @keyframes vhs-grain-animation {
+    0%, 100% { transform: translate(0, 0); }
+    10% { transform: translate(-1%, -1%); }
+    20% { transform: translate(1%, 1%); }
+    30% { transform: translate(-1.5%, 1.5%); }
+    40% { transform: translate(1.5%, -1.5%); }
+    50% { transform: translate(-1%, 1%); }
+    60% { transform: translate(1%, -1%); }
+    70% { transform: translate(-1.5%, -1.5%); }
+    80% { transform: translate(1.5%, 1.5%); }
+    90% { transform: translate(-1%, 1.5%); }
+  }
+  .vhs-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAAXNSR0IArs4c6QAAAXFJREFUaAXt1rFKA1EQxvFfR4tYpIj1A1iI4PQCihcQvEBRxPsmCCpm4w+w0VZBwVpEjxHE3sBCFAuvsLMjzsxmc/dMZOLL3T3M5IfZzYQgBCEI4X/ApZpWGLjg8TqN4uwoRTv0bNMkxuF94t+8L39xR3+wB6s8F03wG66vKDK1F2TE8M0cT+sM3BCTzFOT0zQn8zT9hB2Y55jmkWaZpRlUnS5M0iwpI8zT33AlL/GfJ+k8yT5JjifJ8rJ82/JAlPOlI7tK0k3JJlG8R+003TpxklyTTJpknGTbJO0myS9J1kkyTLJrlL0lGS9JZkTSRZS9JZkrSRZJ0k2SppJ8kGSSZKUkGSSZJUk4yS5JskkyUbSCZKUkWSSZJUkYyS5JskmyRpJ0kWSjJIkkWRjJIkkWSLJFknSSpK0kWSDJCMkySjJJkkWSbJOkkyQZJUkoyQbJElzS/6r9i94EIXwN+ABNlF2uMAfSCoAAAAASUVORK5CYII=');
+    opacity: 0.1;
+    animation: vhs-grain-animation 0.2s steps(2, end) infinite;
+  }
+  .vhs-overlay::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 2px;
+    background: rgba(255, 255, 255, 0.3);
+    animation: vhs-scanline 4s linear infinite;
+  }
+
+  @keyframes vhs-scanline {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(100vh); }
+  }
 
 </style>
 </head>

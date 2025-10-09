@@ -79,7 +79,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
                 // Player destruction is handled in App.tsx before navigating to a new video
             };
         }
-    }, [videoId, setYtPlayer]);
+    }, [activeVideo, videoId, setYtPlayer]);
 
     useEffect(() => {
         const videoElement = videoRef.current;
@@ -115,8 +115,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ videos, videoInputRef, nowPla
                     return prev;
                 });
             }, 20000); // 20s timeout
+            
+            const proxyUrl = localStorage.getItem('cors_proxy_url');
+            let streamUrl = activeVideo.url;
 
-            const streamUrl = activeVideo.url;
+            if (proxyUrl) {
+                const formattedProxy = proxyUrl.trim();
+                if (formattedProxy) {
+                    streamUrl = `${formattedProxy.endsWith('/') ? formattedProxy : formattedProxy + '/'}${streamUrl}`;
+                }
+            }
+
             const { Hls } = window;
             const isHlsStream = activeVideo.url.toLowerCase().includes('.m3u8') || activeVideo.isIPTV;
             

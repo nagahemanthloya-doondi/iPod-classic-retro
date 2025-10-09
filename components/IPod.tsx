@@ -2,8 +2,8 @@
 import React, { useRef, useCallback, useEffect, useState } from 'react';
 import Screen from './Screen';
 import ClickWheel from './ClickWheel';
-import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia, J2MEApp, Theme } from '../types';
-import { BrickBreakerRef, SnakeRef } from '../App';
+import { ScreenView, Song, Photo, Video, BatteryState, NowPlayingMedia, J2MEApp, Theme, FmChannel } from '../types';
+import { BrickBreakerRef, SnakeRef, CameraRef } from '../App';
 
 interface IPodProps {
   currentScreen: ScreenView;
@@ -17,21 +17,31 @@ interface IPodProps {
   onPrev: () => void;
   onSeek: (direction: 'forward' | 'backward') => void;
   onSelect: (selectedId?: any) => void;
+  onCenterDoubleClick: () => void;
   songs: Song[];
   photos: Photo[];
   videos: Video[];
+  iptvLinks: Video[];
+  allVideos: Video[];
   j2meApps: J2MEApp[];
+  fmChannels: FmChannel[];
   onAddYoutubeVideo: (video: Video) => void;
   onAddIptvLink: (video: Video) => void;
   onAddOnlineVideo: (video: Video) => void;
+  onAddFmChannel: (channel: FmChannel) => void;
   handleClearSongs: () => void;
+  handleClearPhotos: () => void;
   handleClearVideos: () => void;
+  handleClearIptvLinks: () => void;
   handleClearJ2meApps: () => void;
+  handleClearFmChannels: () => void;
   playSong: (index: number) => void;
   playVideo: (index: number) => void;
+  playFmChannel: (index: number) => void;
   handleNavigateToNowPlaying: () => void;
   nowPlayingMedia: NowPlayingMedia | null;
   nowPlayingSong?: Song;
+  nowPlayingFmChannel?: FmChannel;
   isPlaying: boolean;
   setIsPlaying: (isPlaying: boolean) => void;
   progress: number;
@@ -43,9 +53,10 @@ interface IPodProps {
   videoRef: React.RefObject<HTMLVideoElement>;
   setYtPlayer: (player: any) => void;
   battery: BatteryState;
-  // Fix: Corrected the type for `brickBreakerRef` from `BrickBreaker` to `BrickBreakerRef` to match the imported type.
   brickBreakerRef: React.RefObject<BrickBreakerRef>;
   snakeRef: React.RefObject<SnakeRef>;
+  cameraRef: React.RefObject<CameraRef>;
+  onAddPhoto: (photoData: { id: string; name: string; file: File; }) => void;
   isGamepadMode: boolean;
   toggleGamepadMode: () => void;
   onGamepadInput: (input: 'up' | 'down' | 'left' | 'right' | 'a' | 'b') => void;
@@ -56,27 +67,6 @@ interface IPodProps {
   theme: Theme;
   setTheme: (theme: Theme) => void;
 }
-
-const GamepadShoulderButton: React.FC<{ label: 'L' | 'R'; onClick: () => void; }> = ({ label, onClick }) => (
-    <button 
-        aria-label={`${label} button`} 
-        onClick={onClick} 
-        className="w-16 h-8 rounded-md text-white font-bold text-xl shadow-sm"
-        style={{ 
-            backgroundColor: 'var(--gamepad-shoulder-bg)',
-        }}
-    >
-        {label}
-    </button>
-);
-
-const GamepadShoulderButtons: React.FC<{ onGamepadInput: IPodProps['onGamepadInput'] }> = ({ onGamepadInput }) => (
-    <div className="w-[20rem] flex justify-between px-8 my-2">
-        <GamepadShoulderButton label="L" onClick={() => onGamepadInput('b')} />
-        <GamepadShoulderButton label="R" onClick={() => onGamepadInput('a')} />
-    </div>
-);
-
 
 const IPod: React.FC<IPodProps> = (props) => {
   const { screenExtensionHeight, setScreenExtensionHeight, theme } = props;
@@ -193,7 +183,6 @@ const IPod: React.FC<IPodProps> = (props) => {
                     <Screen {...props} />
                 </div>
             </div>
-            {props.isGamepadMode && <GamepadShoulderButtons onGamepadInput={props.onGamepadInput} />}
         </div>
         <ClickWheel {...props} onMenuClick={props.goBack} />
       </div>

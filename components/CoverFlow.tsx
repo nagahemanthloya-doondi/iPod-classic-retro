@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { Song } from '../types';
 import { MUSIC_ICON_SVG } from '../lib/constants';
@@ -6,15 +5,18 @@ import { MUSIC_ICON_SVG } from '../lib/constants';
 interface CoverFlowProps {
   songs: Song[];
   activeIndex: number;
-  playSong: (index: number) => void;
+  setActiveIndex: (index: number | ((prev: number) => number)) => void;
+  onSelect: (index: number) => void;
 }
 
-const CoverFlow: React.FC<CoverFlowProps> = ({ songs, activeIndex, playSong }) => {
+const CoverFlow: React.FC<CoverFlowProps> = ({ songs, activeIndex, setActiveIndex, onSelect }) => {
   const albums = useMemo(() => {
     const albumMap = new Map<string, Song>();
     songs.forEach(song => {
-      if (song.album && !albumMap.has(song.album)) {
-        albumMap.set(song.album, song);
+      // Use album name and artist as a key to differentiate albums with the same name
+      const albumKey = `${song.album}|${song.artist}`;
+      if (song.album && !albumMap.has(albumKey)) {
+        albumMap.set(albumKey, song);
       }
     });
     return Array.from(albumMap.values());
@@ -24,55 +26,73 @@ const CoverFlow: React.FC<CoverFlowProps> = ({ songs, activeIndex, playSong }) =
     return <div className="flex-grow flex items-center justify-center text-gray-500">No albums to display</div>;
   }
 
+  const handleCoverClick = (index: number) => {
+    if (index === activeIndex) {
+      onSelect(index);
+    } else {
+      setActiveIndex(index);
+    }
+  };
+
   const activeAlbum = albums[activeIndex];
 
-  const handleAlbumClick = (albumName: string) => {
-    const firstSongOfAlbumIndex = songs.findIndex(s => s.album === albumName);
-    if(firstSongOfAlbumIndex !== -1) {
-        playSong(firstSongOfAlbumIndex);
-    }
-  }
-
   return (
-    <div className="w-full h-full bg-black flex flex-col items-center justify-center overflow-hidden p-2">
-      <div className="flex-grow w-full flex items-center justify-center" style={{ perspective: '50rem' }}>
-        <div className="relative w-full h-48 flex items-center justify-center" style={{ transformStyle: 'preserve-3d' }}>
+    <div className="w-full h-full flex flex-col items-center justify-between overflow-hidden p-2" style={{ background: 'linear-gradient(to bottom, #d1d5db, white 80%)' }}>
+      <div className="flex-grow w-full flex items-center justify-center pt-8" style={{ perspective: '60rem' }}>
+        <div className="relative w-[9rem] h-[9rem] flex items-center justify-center" style={{ transformStyle: 'preserve-3d' }}>
           {albums.map((album, index) => {
             const offset = index - activeIndex;
-            const isVisible = Math.abs(offset) < 5;
+            const isVisible = Math.abs(offset) < 6;
             if (!isVisible) return null;
 
-            const rotateY = offset * 45;
-            const translateX = offset * 3.125; // 50px -> 3.125rem
+            const rotateY = offset * -40;
+            const translateX = offset * 4;
+            const translateZ = -Math.abs(offset) * 5;
             const zIndex = albums.length - Math.abs(offset);
-            const scale = offset === 0 ? 1 : 0.75;
 
             return (
               <div
-                key={album.album}
-                className="absolute w-40 h-40 transition-transform duration-500 ease-in-out"
+                key={`${album.album}-${album.artist}`}
+                className="absolute w-full h-full transition-all duration-300 ease-out"
                 style={{
-                  transform: `translateX(${translateX}rem) rotateY(${rotateY}deg) scale(${scale})`,
+                  transform: `translateX(${translateX}rem) translateZ(${translateZ}rem) rotateY(${rotateY}deg)`,
                   zIndex: zIndex,
-                  cursor: 'pointer'
+                  cursor: 'pointer',
                 }}
-                onClick={() => handleAlbumClick(album.album)}
+                onClick={() => handleCoverClick(index)}
+                role="button"
+                aria-label={`Album: ${album.album} by ${album.artist}`}
+                tabIndex={0}
               >
-                <img
-                  src={album.picture || MUSIC_ICON_SVG}
-                  alt={album.album}
-                  className="w-full h-full object-cover border-4 border-white shadow-lg"
-                />
-                 {offset === 0 && <div className="absolute -bottom-1 left-0 right-0 h-10 bg-black bg-opacity-50 backdrop-blur-sm" />}
+                <div 
+                    className="relative w-full h-full group"
+                >
+                    <img
+                        src={album.picture || MUSIC_ICON_SVG}
+                        alt={album.album}
+                        className="w-full h-full object-cover border-2 border-white shadow-lg"
+                    />
+                    <div
+                        className="absolute top-full left-0 w-full h-full pointer-events-none"
+                        style={{
+                            background: `url("${album.picture || MUSIC_ICON_SVG}")`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            transform: 'scaleY(-1)',
+                            WebkitMaskImage: 'linear-gradient(to bottom, rgba(255,255,255,0.4) 0%, transparent 50%)',
+                            maskImage: 'linear-gradient(to bottom, rgba(255,255,255,0.4) 0%, transparent 50%)',
+                        }}
+                    />
+                </div>
               </div>
             );
           })}
         </div>
       </div>
       {activeAlbum && (
-        <div className="text-white text-center mt-2 flex-shrink-0 z-50">
+        <div className="text-black text-center pb-2 flex-shrink-0 z-50">
           <p className="font-bold truncate">{activeAlbum.album}</p>
-          <p className="text-sm text-gray-300 truncate">{activeAlbum.artist}</p>
+          <p className="text-sm text-gray-700 truncate">{activeAlbum.artist}</p>
         </div>
       )}
     </div>

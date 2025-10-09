@@ -62,48 +62,23 @@ const Snake = forwardRef<{ turn: (dir: 'left' | 'right') => void; startGame: () 
         };
     };
 
-    useImperativeHandle(ref, () => ({
-        turn: (turnDirection) => {
-            if (!gameStateRef.current || !gameStateRef.current.isStarted) return;
-            const state = gameStateRef.current;
-            const { direction } = state;
+    // Fix: Move drawInfo, draw, and gameLoop before useImperativeHandle to avoid temporal dead zone issues.
+    const drawInfo = (text: string, subtext: string = "") => {
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        if (!ctx || !canvas) return;
 
-            if (turnDirection === 'right') {
-                if (direction === 'UP') state.direction = 'RIGHT';
-                else if (direction === 'RIGHT') state.direction = 'DOWN';
-                else if (direction === 'DOWN') state.direction = 'LEFT';
-                else if (direction === 'LEFT') state.direction = 'UP';
-            } else { // 'left'
-                if (direction === 'UP') state.direction = 'LEFT';
-                else if (direction === 'LEFT') state.direction = 'DOWN';
-                else if (direction === 'DOWN') state.direction = 'RIGHT';
-                else if (direction === 'RIGHT') state.direction = 'UP';
-            }
-        },
-        startGame: () => {
-            if (!gameStateRef.current) return;
-            if (gameStateRef.current.gameOver) {
-                gameStateRef.current = initializeGameState();
-            }
-            if (!gameStateRef.current.isStarted) {
-                gameStateRef.current.isStarted = true;
-                gameLoop();
-            }
-        },
-        setDirection: (newDirection) => {
-            if (!gameStateRef.current || !gameStateRef.current.isStarted) return;
-            const state = gameStateRef.current;
-            const { direction } = state;
-
-            // Prevent snake from reversing on itself
-            if (newDirection === 'UP' && direction === 'DOWN') return;
-            if (newDirection === 'DOWN' && direction === 'UP') return;
-            if (newDirection === 'LEFT' && direction === 'RIGHT') return;
-            if (newDirection === 'RIGHT' && direction === 'LEFT') return;
-
-            state.direction = newDirection;
-        },
-    }));
+        ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.font = "bold 24px sans-serif";
+        ctx.fillStyle = "white";
+        ctx.textAlign = "center";
+        ctx.fillText(text, canvas.width / 2, canvas.height / 2 - 10);
+        if (subtext) {
+            ctx.font = "16px sans-serif";
+            ctx.fillText(subtext, canvas.width / 2, canvas.height / 2 + 20);
+        }
+    };
 
     const draw = () => {
         const canvas = canvasRef.current;
@@ -138,24 +113,6 @@ const Snake = forwardRef<{ turn: (dir: 'left' | 'right') => void; startGame: () 
             drawInfo("GAME OVER", "Press Center Button to Restart");
         }
     };
-    
-    const drawInfo = (text: string, subtext: string = "") => {
-        const canvas = canvasRef.current;
-        const ctx = canvas?.getContext('2d');
-        if (!ctx || !canvas) return;
-
-        ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.font = "bold 24px sans-serif";
-        ctx.fillStyle = "white";
-        ctx.textAlign = "center";
-        ctx.fillText(text, canvas.width / 2, canvas.height / 2 - 10);
-        if (subtext) {
-            ctx.font = "16px sans-serif";
-            ctx.fillText(subtext, canvas.width / 2, canvas.height / 2 + 20);
-        }
-    };
-
 
     const gameLoop = () => {
         if (!gameStateRef.current || !gameStateRef.current.isStarted || gameStateRef.current.gameOver) {
@@ -200,7 +157,50 @@ const Snake = forwardRef<{ turn: (dir: 'left' | 'right') => void; startGame: () 
             timeoutIdRef.current = window.setTimeout(gameLoop, GAME_SPEED_MS);
         }
     };
-    
+
+    useImperativeHandle(ref, () => ({
+        turn: (turnDirection) => {
+            if (!gameStateRef.current || !gameStateRef.current.isStarted) return;
+            const state = gameStateRef.current;
+            const { direction } = state;
+
+            if (turnDirection === 'right') {
+                if (direction === 'UP') state.direction = 'RIGHT';
+                else if (direction === 'RIGHT') state.direction = 'DOWN';
+                else if (direction === 'DOWN') state.direction = 'LEFT';
+                else if (direction === 'LEFT') state.direction = 'UP';
+            } else { // 'left'
+                if (direction === 'UP') state.direction = 'LEFT';
+                else if (direction === 'LEFT') state.direction = 'DOWN';
+                else if (direction === 'DOWN') state.direction = 'RIGHT';
+                else if (direction === 'RIGHT') state.direction = 'UP';
+            }
+        },
+        startGame: () => {
+            if (!gameStateRef.current) return;
+            if (gameStateRef.current.gameOver) {
+                gameStateRef.current = initializeGameState();
+            }
+            if (!gameStateRef.current.isStarted) {
+                gameStateRef.current.isStarted = true;
+                gameLoop();
+            }
+        },
+        setDirection: (newDirection) => {
+            if (!gameStateRef.current || !gameStateRef.current.isStarted) return;
+            const state = gameStateRef.current;
+            const { direction } = state;
+
+            // Prevent snake from reversing on itself
+            if (newDirection === 'UP' && direction === 'DOWN') return;
+            if (newDirection === 'DOWN' && direction === 'UP') return;
+            if (newDirection === 'LEFT' && direction === 'RIGHT') return;
+            if (newDirection === 'RIGHT' && direction === 'LEFT') return;
+
+            state.direction = newDirection;
+        },
+    }));
+
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
